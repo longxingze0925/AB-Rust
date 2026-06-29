@@ -2,7 +2,7 @@
 	on_demand_tls {
 		import /etc/caddy/active_tls_ask.conf
 	}
-	email admin@example.com
+	email {$CADDY_EMAIL}
 }
 
 https:// {

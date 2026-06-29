@@ -1,0 +1,12 @@
+.git
+.github
+.agents
+target
+data
+backups
+imports
+.env
+.env.*
+!.env.example
+*.log
+*.tmp

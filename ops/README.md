@@ -1,5 +1,38 @@
 # Ops
 
+## Linux One-Click Install
+
+Run this on a fresh Linux server:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/longxingze0925/AB-Rust/main/ops/install.sh)
+```
+
+The installer downloads this repository, writes `.env`, pulls `ghcr.io/longxingze0925/ab-rust:latest`, starts PostgreSQL, the Rust app, and Caddy, then registers the global `ab-rust` management command.
+
+Useful environment overrides:
+
+```bash
+AB_INSTALL_DIR=/opt/ab-rust AB_PROJECT_NAME=ab-rust AB_IMAGE=ghcr.io/longxingze0925/ab-rust:latest bash <(curl -fsSL https://raw.githubusercontent.com/longxingze0925/AB-Rust/main/ops/install.sh)
+```
+
+After installation, run `ab-rust` to open the update/status/logs/backup/restore/restart/diagnostics/uninstall menu.
+
+## Docker Image
+
+GitHub Actions builds `deploy/Dockerfile` and pushes the image to GHCR on every push to `main` and on `v*` tags:
+
+```text
+ghcr.io/longxingze0925/ab-rust:latest
+ghcr.io/longxingze0925/ab-rust:sha-<commit>
+```
+
+Build locally when needed:
+
+```powershell
+docker build -f deploy/Dockerfile -t ab-rust:local .
+```
+
 ## Deploy
 
 ```powershell

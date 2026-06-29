@@ -9,6 +9,7 @@
 - Askama 服务端模板
 - HTMX 预留后台局部刷新能力
 - Docker Compose + Caddy on-demand TLS
+- GitHub Actions 自动构建 Docker 镜像到 GHCR
 
 ## 本地开发
 
@@ -35,6 +36,16 @@ http://127.0.0.1:3000/admin
 ```
 
 ## 部署与旧数据导入
+
+### Linux 一键安装
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/longxingze0925/AB-Rust/main/ops/install.sh)
+```
+
+安装脚本会检查 Docker/Compose、下载部署文件、生成 `.env`、拉取 `ghcr.io/longxingze0925/ab-rust:latest` 镜像、启动 PostgreSQL + Rust app + Caddy，并注册 `ab-rust` 管理命令。
+
+### 手动/Windows 部署
 
 部署、备份、旧 Next.js SQLite 数据导入脚本放在 `ops/`：
 
@@ -72,7 +83,8 @@ python ops/import_legacy_sqlite.py --sqlite C:\Users\1\Desktop\ab\data\app.db --
 - Caddy TLS ask 接口读取后台线路域名 allowlist
 - `/health` 健康检查接口，仅公开简单 `ok` 状态
 - Dockerfile、docker-compose、Caddyfile
-- Docker Compose 蓝绿部署脚本、Caddy 动态切流、健康巡检、失败回滚、发布历史记录、后台蓝绿状态页、PostgreSQL 备份脚本、旧 SQLite 数据导入 SQL 生成脚本
+- Docker Compose 蓝绿部署脚本、Linux 一键安装菜单、Caddy 动态切流、健康巡检、失败回滚、发布历史记录、后台蓝绿状态页、PostgreSQL 备份脚本、旧 SQLite 数据导入 SQL 生成脚本
+- GitHub Actions 自动构建并推送 Docker 镜像到 GHCR
 - 后台 CSRF、Cookie 加固、上传大小/类型限制、生产环境变量校验
 - 公开采集/下载接口签名 token、防重复下载事件、下载事件数据库级唯一约束
 - Meta CAPI Token 应用层加密、Meta 回执脱敏、Meta 脱敏单元测试
