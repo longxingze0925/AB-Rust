@@ -1,0 +1,108 @@
+{% extends "admin/base.html" %}
+
+{% block title %}分流策略 - APK 分发后台{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>分流策略</h1>
+    <p>按线路开启基础分流：黑名单 IP/CIDR 和明显爬虫 UA 会返回假页，其余继续真实跳转。</p>
+  </div>
+</header>
+
+{% match error %}
+{% when Some with (message) %}
+  <div class="alert danger">{{ message }}</div>
+{% when None %}
+{% endmatch %}
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>线路</th>
+        <th>入口域名</th>
+        <th>启用</th>
+        <th>阈值</th>
+        <th>令牌小时</th>
+        <th>假页标题</th>
+        <th>假 APK</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for route in routes %}
+      <tr>
+        <td>{{ route.route_name }}</td>
+        <td><code>{{ route.entry_domain }}</code></td>
+        <td>
+          <input form="cloak-{{ route.route_id }}" type="checkbox" name="enabled" value="1" {% if route.enabled %}checked{% endif %}>
+        </td>
+        <td><input form="cloak-{{ route.route_id }}" class="table-input number" name="threshold" value="{{ route.threshold }}"></td>
+        <td><input form="cloak-{{ route.route_id }}" class="table-input number" name="token_hours" value="{{ route.token_hours }}"></td>
+        <td><input form="cloak-{{ route.route_id }}" class="table-input" name="decoy_title" value="{{ route.decoy_title }}"></td>
+        <td><input form="cloak-{{ route.route_id }}" class="table-input wide" name="decoy_apk_url" value="{{ route.decoy_apk_url }}"></td>
+        <td>
+          <form id="cloak-{{ route.route_id }}" method="post" action="/admin/cloak/save">
+            <input type="hidden" name="route_id" value="{{ route.route_id }}">
+            <button class="btn small primary" type="submit">保存</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if routes.len() == 0 %}
+      <tr>
+        <td class="empty" colspan="8">暂无线路。</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel padded">
+  <h2>IP 黑名单</h2>
+  <form class="toolbar-form" method="post" action="/admin/cloak/blacklist/add">
+    <label>
+      <span>IP / CIDR</span>
+      <input name="cidr" placeholder="1.2.3.4 或 1.2.3.0/24" required>
+    </label>
+    <label>
+      <span>备注</span>
+      <input name="note" placeholder="来源或原因">
+    </label>
+    <button class="btn primary" type="submit">添加</button>
+  </form>
+</section>
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>CIDR</th>
+        <th>备注</th>
+        <th>创建时间</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in blacklist %}
+      <tr>
+        <td><code>{{ item.cidr }}</code></td>
+        <td>{{ item.note }}</td>
+        <td>{{ item.created_at }}</td>
+        <td>
+          <form method="post" action="/admin/cloak/blacklist/{{ item.id }}/delete" data-confirm="确认删除这条 IP 黑名单规则？">
+            <button class="btn small danger" type="submit">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if blacklist.len() == 0 %}
+      <tr>
+        <td class="empty" colspan="4">暂无黑名单。</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

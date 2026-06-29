@@ -1,0 +1,77 @@
+services:
+  app_blue:
+    image: ${APP_IMAGE_BLUE:-ab-app:blue}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      DATABASE_URL: postgres://ab:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/ab
+      DATA_DIR: /data
+    volumes:
+      - app_data:/data
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app_green:
+    image: ${APP_IMAGE_GREEN:-ab-app:green}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      DATABASE_URL: postgres://ab:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/ab
+      DATA_DIR: /data
+    volumes:
+      - app_data:/data
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ab
+      POSTGRES_USER: ab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ab -d ab"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./active_tls_ask.conf:/etc/caddy/active_tls_ask.conf:ro
+      - ./active_proxy.conf:/etc/caddy/active_proxy.conf:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app_blue
+      - app_green
+
+volumes:
+  app_data:
+  postgres_data:
+  caddy_data:
+  caddy_config:

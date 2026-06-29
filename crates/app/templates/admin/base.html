@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>{% block title %}APK 分发后台{% endblock %}</title>
+    <link rel="stylesheet" href="/static/admin.css">
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-title">APK 分发后台</div>
+          <div class="brand-subtitle">线路 / 推广 / 访问 / 分流</div>
+        </div>
+        <nav class="nav">
+          <a class="nav-link {% if active == "dashboard" %}active{% endif %}" href="/admin">数据总览</a>
+          <a class="nav-link {% if active == "routes" %}active{% endif %}" href="/admin/routes">线路管理</a>
+          <a class="nav-link {% if active == "promos" %}active{% endif %}" href="/admin/promos">推广码</a>
+          <a class="nav-link {% if active == "visits" %}active{% endif %}" href="/admin/visits">访问记录</a>
+          <a class="nav-link {% if active == "templates" %}active{% endif %}" href="/admin/templates">模板管理</a>
+          <a class="nav-link {% if active == "assets" %}active{% endif %}" href="/admin/assets">素材管理</a>
+          <a class="nav-link {% if active == "cloak" %}active{% endif %}" href="/admin/cloak">分流策略</a>
+          <a class="nav-link {% if active == "meta" %}active{% endif %}" href="/admin/meta">Meta 事件</a>
+          <a class="nav-link {% if active == "settings" %}active{% endif %}" href="/admin/settings">系统设置</a>
+        </nav>
+        <form class="sidebar-footer" method="post" action="/admin/logout">
+          <button class="logout" type="submit">退出登录</button>
+        </form>
+      </aside>
+      <main class="main">
+        <div class="content">
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
+    <dialog class="confirm-dialog" id="confirm-dialog">
+      <form method="dialog" class="confirm-card">
+        <h2 id="confirm-title">确认操作</h2>
+        <p id="confirm-message">该操作执行后不能直接撤销。</p>
+        <div class="confirm-actions">
+          <button class="btn" value="cancel" type="submit">取消</button>
+          <button class="btn danger" id="confirm-submit" value="confirm" type="submit">确认</button>
+        </div>
+      </form>
+    </dialog>
+    <script>
+      (() => {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
+        for (const form of document.querySelectorAll('form[method="post"]')) {
+          if (!form.querySelector('input[name="csrf_token"]')) {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "csrf_token";
+            input.value = csrfToken;
+            form.prepend(input);
+          }
+        }
+
+        const dialog = document.getElementById("confirm-dialog");
+        const message = document.getElementById("confirm-message");
+        const submit = document.getElementById("confirm-submit");
+        let pendingForm = null;
+
+        document.addEventListener("submit", (event) => {
+          const form = event.target;
+          if (!(form instanceof HTMLFormElement) || !form.dataset.confirm) {
+            return;
+          }
+          if (form.dataset.confirmed === "1") {
+            delete form.dataset.confirmed;
+            return;
+          }
+          if (!dialog || typeof dialog.showModal !== "function") {
+            if (!window.confirm(form.dataset.confirm)) {
+              event.preventDefault();
+            }
+            return;
+          }
+          event.preventDefault();
+          pendingForm = form;
+          message.textContent = form.dataset.confirm;
+          dialog.showModal();
+        });
+
+        submit?.addEventListener("click", () => {
+          const form = pendingForm;
+          pendingForm = null;
+          dialog.close();
+          if (form) {
+            form.dataset.confirmed = "1";
+            form.requestSubmit();
+          }
+        });
+
+        dialog?.addEventListener("close", () => {
+          pendingForm = null;
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,226 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Meta 事件 - APK 分发后台{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Meta 事件</h1>
+    <p>按线路配置 Pixel 和 CAPI。浏览器端发送 PageView / ViewContent / Lead，服务端用相同事件 ID 发送 CAPI 做去重。</p>
+  </div>
+</header>
+
+{% match error %}
+{% when Some with (message) %}
+  <div class="alert danger">{{ message }}</div>
+{% when None %}
+{% endmatch %}
+
+{% match message %}
+{% when Some with (text) %}
+  <div class="alert success">{{ text }}</div>
+{% when None %}
+{% endmatch %}
+
+{% match stats %}
+{% when Some with (data) %}
+<section class="stats-grid">
+  <article class="card stat">
+    <span>活跃事件</span>
+    <strong>{{ data.total_active }}</strong>
+  </article>
+  <article class="card stat">
+    <span>待发送</span>
+    <strong>{{ data.pending }}</strong>
+  </article>
+  <article class="card stat">
+    <span>发送成功</span>
+    <strong>{{ data.sent }}</strong>
+  </article>
+  <article class="card stat">
+    <span>发送失败</span>
+    <strong>{{ data.failed }}</strong>
+  </article>
+  <article class="card stat">
+    <span>近 24h 成功</span>
+    <strong>{{ data.sent_24h }}</strong>
+  </article>
+  <article class="card stat">
+    <span>近 24h 失败</span>
+    <strong>{{ data.failed_24h }}</strong>
+  </article>
+  <article class="card stat">
+    <span>已跳过</span>
+    <strong>{{ data.skipped }}</strong>
+  </article>
+  <article class="card stat">
+    <span>已归档</span>
+    <strong>{{ data.archived }}</strong>
+  </article>
+</section>
+{% when None %}
+{% endmatch %}
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>线路</th>
+        <th>入口域名</th>
+        <th>启用</th>
+        <th>Pixel ID</th>
+        <th>CAPI Token</th>
+        <th>测试码</th>
+        <th>币种</th>
+        <th>价值</th>
+        <th>事件</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for route in routes %}
+      <tr>
+        <td>{{ route.route_name }}</td>
+        <td><code>{{ route.entry_domain }}</code></td>
+        <td>
+          <input form="meta-{{ route.route_id }}" type="checkbox" name="enabled" value="1" {% if route.enabled %}checked{% endif %}>
+        </td>
+        <td><input form="meta-{{ route.route_id }}" class="table-input" name="pixel_id" value="{{ route.pixel_id }}" placeholder="Pixel ID"></td>
+        <td>
+          <input form="meta-{{ route.route_id }}" class="table-input wide" name="capi_token" type="password" placeholder="{% if route.capi_token_set %}已设置，留空保留{% else %}未设置{% endif %}">
+        </td>
+        <td><input form="meta-{{ route.route_id }}" class="table-input" name="test_event_code" value="{{ route.test_event_code }}" placeholder="TEST..."></td>
+        <td><input form="meta-{{ route.route_id }}" class="table-input code" name="currency" value="{{ route.currency }}"></td>
+        <td><input form="meta-{{ route.route_id }}" class="table-input number" name="value" value="{{ route.value }}"></td>
+        <td>
+          <div class="inline-checks">
+            <label><input form="meta-{{ route.route_id }}" type="checkbox" name="page_view_enabled" value="1" {% if route.page_view_enabled %}checked{% endif %}> PV</label>
+            <label><input form="meta-{{ route.route_id }}" type="checkbox" name="view_content_enabled" value="1" {% if route.view_content_enabled %}checked{% endif %}> VC</label>
+            <label><input form="meta-{{ route.route_id }}" type="checkbox" name="lead_enabled" value="1" {% if route.lead_enabled %}checked{% endif %}> Lead</label>
+          </div>
+        </td>
+        <td>
+          <form id="meta-{{ route.route_id }}" method="post" action="/admin/meta/save">
+            <input type="hidden" name="route_id" value="{{ route.route_id }}">
+            <button class="btn small primary" type="submit">保存</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if routes.len() == 0 %}
+      <tr>
+        <td class="empty" colspan="10">暂无线路。</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<div class="dashboard-grid">
+  <section class="panel table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>事件名</th>
+          <th>总数</th>
+          <th>成功</th>
+          <th>失败</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in event_stats %}
+        <tr>
+          <td>{{ item.event_name }}</td>
+          <td>{{ item.total }}</td>
+          <td>{{ item.sent }}</td>
+          <td>{{ item.failed }}</td>
+        </tr>
+        {% endfor %}
+        {% if event_stats.len() == 0 %}
+        <tr><td class="empty" colspan="4">暂无事件统计。</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel padded">
+    <h2>事件维护</h2>
+    <form class="toolbar-form" method="post" action="/admin/meta/events/archive-finished" data-confirm="确认归档已完成 Meta 事件？归档后默认列表不再展示。">
+      <label>
+        <span>归档早于天数</span>
+        <input name="older_than_days" type="number" min="1" max="3650" value="30" required>
+      </label>
+      <button class="btn primary" type="submit">归档已完成事件</button>
+      {% if include_archived %}
+        <a class="btn" href="/admin/meta">仅看活跃</a>
+      {% else %}
+        <a class="btn" href="/admin/meta?archived=1">包含归档</a>
+      {% endif %}
+    </form>
+  </section>
+</div>
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>时间</th>
+        <th>线路</th>
+        <th>事件</th>
+        <th>Event ID</th>
+        <th>状态</th>
+        <th>次数</th>
+        <th>HTTP</th>
+        <th>回执</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for event in events %}
+      <tr>
+        <td>{{ event.created_at }}</td>
+        <td>{{ event.route_name }}</td>
+        <td>{{ event.event_name }}</td>
+        <td><code>{{ event.event_id }}</code></td>
+        <td>
+          {% if event.status == "sent" %}
+            <span class="badge success">sent</span>
+          {% else if event.status == "failed" %}
+            <span class="badge danger">failed</span>
+          {% else if event.status == "skipped" %}
+            <span class="badge muted">skipped</span>
+          {% else if event.status == "processing" %}
+            <span class="badge primary">processing</span>
+          {% else %}
+            <span class="badge primary">pending</span>
+          {% endif %}
+          {% if event.archived %}<span class="badge muted">归档</span>{% endif %}
+        </td>
+        <td>{{ event.attempts }}</td>
+        <td>{% match event.last_status %}{% when Some with (status) %}{{ status }}{% when None %}-{% endmatch %}</td>
+        <td class="truncate" title="{{ event.last_response }}">{{ event.last_response }}</td>
+        <td>
+          <div class="actions">
+            <form method="post" action="/admin/meta/events/{{ event.id }}/retry" data-confirm="确认把这个 Meta 事件放回待发送队列？">
+              <button class="btn small" type="submit">重发</button>
+            </form>
+            {% if event.archived %}
+              <span class="muted">已归档</span>
+            {% else %}
+              <form method="post" action="/admin/meta/events/{{ event.id }}/archive" data-confirm="确认归档这个 Meta 事件？">
+                <button class="btn small danger" type="submit">归档</button>
+              </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if events.len() == 0 %}
+      <tr>
+        <td class="empty" colspan="9">暂无 Meta 事件。</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

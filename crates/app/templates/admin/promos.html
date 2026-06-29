@@ -1,0 +1,69 @@
+{% extends "admin/base.html" %}
+
+{% block title %}推广码 - APK 分发后台{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>推广码</h1>
+    <p>按线路管理渠道码，可为单个渠道设置专属 APK 下载直链。</p>
+  </div>
+  <a class="btn primary" href="/admin/promos/new">新增推广码</a>
+</header>
+
+{% match error %}
+{% when Some with (message) %}
+  <div class="alert danger">{{ message }}</div>
+{% when None %}
+{% endmatch %}
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>推广码</th>
+        <th>名称</th>
+        <th>线路</th>
+        <th>入口链接</th>
+        <th>专属 APK</th>
+        <th>访问</th>
+        <th>下载</th>
+        <th>状态</th>
+        <th>创建</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for promo in promos %}
+      <tr>
+        <td><code>{{ promo.code }}</code></td>
+        <td>{{ promo.name }}</td>
+        <td>{{ promo.route_name }}</td>
+        <td><code>https://{{ promo.entry_domain }}/?c={{ promo.code }}</code></td>
+        <td>{% match promo.apk_url %}{% when Some with (url) %}{{ url }}{% when None %}-{% endmatch %}</td>
+        <td>{{ promo.visits }}</td>
+        <td>{{ promo.downloads }}</td>
+        <td>{% if promo.enabled %}<span class="badge success">启用</span>{% else %}<span class="badge muted">停用</span>{% endif %}</td>
+        <td>{{ promo.created_at }}</td>
+        <td>
+          <div class="actions">
+            <a class="btn small" href="/admin/promos/{{ promo.id }}/edit">编辑</a>
+            <form method="post" action="/admin/promos/{{ promo.id }}/toggle">
+              <button class="btn small" type="submit">{% if promo.enabled %}停用{% else %}启用{% endif %}</button>
+            </form>
+            <form method="post" action="/admin/promos/{{ promo.id }}/delete" data-confirm="确认删除这个推广码？历史访问记录仍会保留已写入的推广码文本。">
+              <button class="btn small danger" type="submit">删除</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if promos.len() == 0 %}
+      <tr>
+        <td class="empty" colspan="10">暂无推广码，点击右上角新增。</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

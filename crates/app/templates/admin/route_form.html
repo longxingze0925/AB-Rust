@@ -1,0 +1,103 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ mode }} - APK 分发后台{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>{{ mode }}</h1>
+    <p>配置入口、真实目标和落地页模式；分流和 Meta 后续在独立模块维护。</p>
+  </div>
+  <a class="btn" href="/admin/routes">返回列表</a>
+</header>
+
+{% match error %}
+{% when Some with (message) %}
+  <div class="alert danger">{{ message }}</div>
+{% when None %}
+{% endmatch %}
+
+<form class="panel padded form-grid" method="post" action="{{ action }}">
+  <label>
+    <span>线路名称</span>
+    <input name="name" value="{{ route.name }}" placeholder="例如：主线路">
+  </label>
+
+  <label>
+    <span>入口域名</span>
+    <input name="entry_domain" value="{{ route.entry_domain }}" placeholder="go.example.com" required>
+  </label>
+
+  <label>
+    <span>真实目标</span>
+    <select name="target_type">
+      <option value="internal" {% if route.target_type == "internal" %}selected{% endif %}>内部出口域名</option>
+      <option value="external" {% if route.target_type == "external" %}selected{% endif %}>外部网站 URL</option>
+    </select>
+  </label>
+
+  <label>
+    <span>出口域名</span>
+    <input name="exit_domain" value="{{ route.exit_domain }}" placeholder="dl.example.com">
+  </label>
+
+  <label class="span-2">
+    <span>外部网站 URL</span>
+    <input name="external_url" value="{{ route.external_url }}" placeholder="https://example.com/path">
+  </label>
+
+  <label>
+    <span>落地页标题</span>
+    <input name="title" value="{{ route.title }}" required>
+  </label>
+
+  <label>
+    <span>落地页模式</span>
+    <select name="landing_mode">
+      <option value="default" {% if route.landing_mode == "default" %}selected{% endif %}>默认下载页</option>
+      <option value="template" {% if route.landing_mode == "template" %}selected{% endif %}>自定义模板</option>
+    </select>
+  </label>
+
+  <label>
+    <span>模板</span>
+    <select name="template_id">
+      <option value="">不使用模板</option>
+      {% for item in templates %}
+      <option value="{{ item.id }}" {% if route.template_id_value == item.id.to_string() %}selected{% endif %}>{{ item.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label>
+    <span>默认页展示图</span>
+    <select name="image_asset_id">
+      <option value="">不展示图片</option>
+      {% for item in assets %}
+      <option value="{{ item.id }}" {% if route.image_asset_id_value == item.id.to_string() %}selected{% endif %}>{{ item.original_name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label class="span-2">
+    <span>APK 下载直链</span>
+    <input name="apk_url" value="{{ route.apk_url }}" placeholder="https://cdn.example.com/app.apk">
+  </label>
+
+  <div class="check-row">
+    <label>
+      <input type="checkbox" name="auto_download" value="1" {% if route.auto_download %}checked{% endif %}>
+      <span>进入出口页后自动尝试下载</span>
+    </label>
+    <label>
+      <input type="checkbox" name="enabled" value="1" {% if route.enabled %}checked{% endif %}>
+      <span>启用线路</span>
+    </label>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn primary" type="submit">保存</button>
+    <a class="btn" href="/admin/routes">取消</a>
+  </div>
+</form>
+{% endblock %}

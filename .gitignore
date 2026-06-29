@@ -1,0 +1,13 @@
+/target
+/.env
+/.env.*
+!/.env.example
+/data/*
+!/data/.gitkeep
+!/data/uploads/
+!/data/uploads/.gitkeep
+!/data/templates/
+!/data/templates/.gitkeep
+/backups/
+/imports/
+*.log

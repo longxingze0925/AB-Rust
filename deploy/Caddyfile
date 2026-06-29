@@ -1,0 +1,15 @@
+{
+	on_demand_tls {
+		import /etc/caddy/active_tls_ask.conf
+	}
+	email admin@example.com
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy {
+		import /etc/caddy/active_proxy.conf
+	}
+}

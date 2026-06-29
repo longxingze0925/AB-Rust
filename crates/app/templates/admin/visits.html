@@ -1,0 +1,120 @@
+{% extends "admin/base.html" %}
+
+{% block title %}访问记录 - APK 分发后台{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>访问记录</h1>
+    <p>查看入口命中、推广码、IP 来源、设备信息和下载状态。</p>
+  </div>
+</header>
+
+{% match error %}
+{% when Some with (message) %}
+  <div class="alert danger">{{ message }}</div>
+{% when None %}
+{% endmatch %}
+
+{% match result %}
+{% when Some with (data) %}
+<section class="panel padded">
+  <form class="toolbar-form" method="get" action="/admin/visits">
+    <label>
+      <span>推广码</span>
+      <input name="promo" value="{{ data.promo }}" placeholder="按推广码筛选">
+    </label>
+    <input type="hidden" name="size" value="{{ data.page_size }}">
+    <button class="btn primary" type="submit">筛选</button>
+    <a class="btn" href="/admin/visits">重置</a>
+    <span class="muted">共 {{ data.total }} 条</span>
+  </form>
+</section>
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>时间</th>
+        <th>页面</th>
+        <th>原因</th>
+        <th>线路</th>
+        <th>推广码</th>
+        <th>IP</th>
+        <th>IP 来源</th>
+        <th>地区</th>
+        <th>运营商</th>
+        <th>系统</th>
+        <th>设备</th>
+        <th>浏览器</th>
+        <th>屏幕</th>
+        <th>时区</th>
+        <th>网络</th>
+        <th>指纹</th>
+        <th>下载</th>
+        <th>入口</th>
+        <th>出口</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for visit in data.rows %}
+      <tr>
+        <td>{{ visit.created_at }}</td>
+        <td>
+          {% if visit.page_variant == "real" %}
+            <span class="badge success">真</span>
+          {% else if visit.page_variant == "fake" %}
+            <span class="badge danger">假</span>
+          {% else if visit.page_variant == "probe" %}
+            <span class="badge primary">探针</span>
+          {% else %}
+            -
+          {% endif %}
+        </td>
+        <td class="truncate" title="{{ visit.cloak_reason }}">{{ visit.cloak_reason }}</td>
+        <td>{{ visit.route_name }}</td>
+        <td>{% if visit.promo_code != "" %}<code>{{ visit.promo_code }}</code>{% else %}-{% endif %}</td>
+        <td>{% match visit.ip %}{% when Some with (ip) %}{{ ip }}{% when None %}-{% endmatch %}</td>
+        <td>{{ visit.ip_source }}</td>
+        <td>{{ visit.country }} {{ visit.province }} {{ visit.city }}</td>
+        <td>{{ visit.isp }}</td>
+        <td>{{ visit.os }} {{ visit.os_version }}</td>
+        <td>{{ visit.device }}</td>
+        <td>{{ visit.browser }}</td>
+        <td>{{ visit.screen }}</td>
+        <td>{{ visit.timezone }}</td>
+        <td>{{ visit.network }}</td>
+        <td>{% if visit.fingerprint != "" %}<code title="{{ visit.fingerprint }}">{{ visit.fingerprint }}</code>{% else %}-{% endif %}</td>
+        <td>{% if visit.downloaded %}<span class="badge success">已下载</span>{% else %}-{% endif %}</td>
+        <td>{{ visit.entry_domain }}</td>
+        <td>{{ visit.exit_domain }}</td>
+      </tr>
+      {% endfor %}
+      {% if data.rows.len() == 0 %}
+      <tr>
+        <td class="empty" colspan="19">暂无访问记录。</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<div class="pager">
+  {% if data.page > 1 %}
+    <a class="btn" href="/admin/visits?page={{ data.page - 1 }}&size={{ data.page_size }}&promo={{ data.promo }}">上一页</a>
+  {% else %}
+    <button class="btn" type="button" disabled>上一页</button>
+  {% endif %}
+  <span>{{ data.page }} / {{ data.pages }}</span>
+  {% if data.page < data.pages %}
+    <a class="btn" href="/admin/visits?page={{ data.page + 1 }}&size={{ data.page_size }}&promo={{ data.promo }}">下一页</a>
+  {% else %}
+    <button class="btn" type="button" disabled>下一页</button>
+  {% endif %}
+</div>
+{% when None %}
+<section class="panel padded">
+  <p class="muted">访问记录暂时无法加载。</p>
+</section>
+{% endmatch %}
+{% endblock %}

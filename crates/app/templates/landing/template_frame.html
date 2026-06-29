@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>下载</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        min-height: 100%;
+        background: #fff;
+      }
+      iframe {
+        display: block;
+        width: 100%;
+        height: 100vh;
+        border: 0;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe title="landing-template" src="{{ template_url }}" sandbox="allow-scripts allow-forms"></iframe>
+    <script>
+      const apkUrl = {{ apk_url_json|safe }};
+      const routeId = "{{ route_id }}";
+      const promoId = {% match promo_id %}{% when Some with (id) %}"{{ id }}"{% when None %}null{% endmatch %};
+      const visitId = {% match visit_id %}{% when Some with (id) %}"{{ id }}"{% when None %}null{% endmatch %};
+      const eventToken = {{ event_token_json|safe }};
+      const metaConfig = {{ meta_json|safe }};
+      let downloadMarked = false;
+
+      function sendJson(url, payload) {
+        navigator.sendBeacon(url, new Blob([JSON.stringify(payload)], { type: "application/json" }));
+      }
+
+      function eventSuffix() {
+        return visitId || String(Date.now());
+      }
+
+      function initMetaPixel() {
+        if (!metaConfig || !metaConfig.pixel_id) return;
+        (function(f, b, e, v, n, t, s) {
+          if (f.fbq) return;
+          n = f.fbq = function() {
+            n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+          };
+          if (!f._fbq) f._fbq = n;
+          n.push = n;
+          n.loaded = true;
+          n.version = "2.0";
+          n.queue = [];
+          t = b.createElement(e);
+          t.async = true;
+          t.src = v;
+          s = b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t, s);
+        })(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
+        fbq("init", metaConfig.pixel_id);
+      }
+
+      function trackMeta(name, eventId) {
+        if (!metaConfig || typeof fbq !== "function") return;
+        const options = { eventID: eventId };
+        const data = {};
+        if (metaConfig.value && metaConfig.value !== "0") {
+          data.currency = metaConfig.currency || "USD";
+          data.value = Number(metaConfig.value);
+        }
+        fbq("track", name, data, options);
+      }
+
+      function cookieValue(name) {
+        return document.cookie
+          .split(";")
+          .map((part) => part.trim())
+          .find((part) => part.startsWith(name + "="))
+          ?.slice(name.length + 1) || "";
+      }
+
+      function metaFbc() {
+        const cookie = cookieValue("_fbc");
+        if (cookie) return cookie;
+        const fbclid = new URLSearchParams(window.location.search).get("fbclid");
+        return fbclid ? "fb.1." + Date.now() + "." + fbclid : "";
+      }
+
+      function buildFingerprint() {
+        const parts = [
+          navigator.userAgent || "",
+          navigator.language || "",
+          (navigator.languages || []).join(","),
+          navigator.platform || "",
+          `${screen.width}x${screen.height}x${screen.colorDepth}`,
+          String(window.devicePixelRatio || ""),
+          String(new Date().getTimezoneOffset()),
+          String(navigator.hardwareConcurrency || ""),
+          String(navigator.deviceMemory || ""),
+          String(navigator.maxTouchPoints || ""),
+          String(navigator.webdriver || false),
+          String((navigator.plugins && navigator.plugins.length) || 0),
+          String((navigator.mimeTypes && navigator.mimeTypes.length) || 0)
+        ];
+        let hash = 0;
+        const value = parts.join("|");
+        for (let i = 0; i < value.length; i += 1) {
+          hash = ((hash << 5) - hash) + value.charCodeAt(i);
+          hash |= 0;
+        }
+        return Math.abs(hash).toString(16);
+      }
+
+      function probeNetwork(connection) {
+        const payload = {
+          effectiveType: connection ? (connection.effectiveType || "") : "",
+          downlink: connection ? (connection.downlink || "") : "",
+          rtt: connection ? (connection.rtt || "") : "",
+          saveData: connection ? Boolean(connection.saveData) : false,
+          platform: navigator.platform || "",
+          languages: navigator.languages || [],
+          touchPoints: navigator.maxTouchPoints || 0,
+          webdriver: Boolean(navigator.webdriver),
+          plugins: (navigator.plugins && navigator.plugins.length) || 0,
+          hardwareConcurrency: navigator.hardwareConcurrency || "",
+          deviceMemory: navigator.deviceMemory || "",
+          visibility: document.visibilityState || ""
+        };
+        return JSON.stringify(payload);
+      }
+
+      function collectClientFields() {
+        if (!visitId) return;
+        const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        sendJson("/api/collect", {
+          visit_id: visitId,
+          route_id: routeId,
+          token: eventToken,
+          screen: `${screen.width}x${screen.height}@${window.devicePixelRatio || 1}x`,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+          network: probeNetwork(connection),
+          fingerprint: buildFingerprint()
+        });
+      }
+
+      function triggerDownload() {
+        if (!apkUrl) return;
+        const leadEventId = "lead_" + eventSuffix();
+        if (!downloadMarked) {
+          downloadMarked = true;
+          if (metaConfig && metaConfig.lead_enabled) {
+            trackMeta("Lead", leadEventId);
+          }
+          sendJson("/api/downloaded", {
+            route_id: routeId,
+            visit_id: visitId,
+            promo_id: promoId,
+            token: eventToken,
+            event_id: leadEventId,
+            apk_url: apkUrl,
+            url: window.location.href,
+            fbp: cookieValue("_fbp"),
+            fbc: metaFbc()
+          });
+        }
+        const frame = document.createElement("iframe");
+        frame.src = apkUrl;
+        frame.style.display = "none";
+        frame.setAttribute("aria-hidden", "true");
+        document.body.appendChild(frame);
+        setTimeout(() => frame.remove(), 15000);
+      }
+
+      window.addEventListener("message", (event) => {
+        if (event.data && event.data.type === "landing:download") triggerDownload();
+      });
+      initMetaPixel();
+      if (metaConfig && metaConfig.page_view_enabled) {
+        trackMeta("PageView", "pv_" + eventSuffix());
+      }
+      if (metaConfig && metaConfig.view_content_enabled) {
+        trackMeta("ViewContent", "vc_" + eventSuffix());
+      }
+      collectClientFields();
+      {% if auto_download %}
+      setTimeout(triggerDownload, 1000);
+      {% endif %}
+    </script>
+  </body>
+</html>

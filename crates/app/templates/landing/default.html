@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #111827;
+        background: #f8fafc;
+      }
+      main {
+        width: min(100%, 420px);
+        padding: 24px;
+        text-align: center;
+      }
+      h1 {
+        margin: 0 0 18px;
+        font-size: 24px;
+      }
+      img {
+        display: block;
+        width: min(100%, 360px);
+        max-height: 56vh;
+        object-fit: contain;
+        margin: 0 auto 18px;
+        border-radius: 8px;
+      }
+      button {
+        width: 100%;
+        min-height: 56px;
+        border: 0;
+        border-radius: 999px;
+        background: #2563eb;
+        color: #fff;
+        font-size: 18px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      p {
+        color: #64748b;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>{{ title }}</h1>
+      {% if image_url != "" %}
+      <img src="{{ image_url }}" alt="{{ title }}">
+      {% endif %}
+      <button id="download" type="button">Download and Install</button>
+      <p>If the download doesn't start, tap the button again.</p>
+    </main>
+    <script>
+      const apkUrl = {{ apk_url_json|safe }};
+      const routeId = "{{ route_id }}";
+      const promoId = {% match promo_id %}{% when Some with (id) %}"{{ id }}"{% when None %}null{% endmatch %};
+      const visitId = {% match visit_id %}{% when Some with (id) %}"{{ id }}"{% when None %}null{% endmatch %};
+      const eventToken = {{ event_token_json|safe }};
+      const metaConfig = {{ meta_json|safe }};
+      let downloadMarked = false;
+
+      function eventSuffix() {
+        return visitId || String(Date.now());
+      }
+
+      function initMetaPixel() {
+        if (!metaConfig || !metaConfig.pixel_id) return;
+        (function(f, b, e, v, n, t, s) {
+          if (f.fbq) return;
+          n = f.fbq = function() {
+            n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+          };
+          if (!f._fbq) f._fbq = n;
+          n.push = n;
+          n.loaded = true;
+          n.version = "2.0";
+          n.queue = [];
+          t = b.createElement(e);
+          t.async = true;
+          t.src = v;
+          s = b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t, s);
+        })(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
+        fbq("init", metaConfig.pixel_id);
+      }
+
+      function trackMeta(name, eventId) {
+        if (!metaConfig || typeof fbq !== "function") return;
+        const options = { eventID: eventId };
+        const data = {};
+        if (metaConfig.value && metaConfig.value !== "0") {
+          data.currency = metaConfig.currency || "USD";
+          data.value = Number(metaConfig.value);
+        }
+        fbq("track", name, data, options);
+      }
+
+      function cookieValue(name) {
+        return document.cookie
+          .split(";")
+          .map((part) => part.trim())
+          .find((part) => part.startsWith(name + "="))
+          ?.slice(name.length + 1) || "";
+      }
+
+      function metaFbc() {
+        const cookie = cookieValue("_fbc");
+        if (cookie) return cookie;
+        const fbclid = new URLSearchParams(window.location.search).get("fbclid");
+        return fbclid ? "fb.1." + Date.now() + "." + fbclid : "";
+      }
+
+      function buildFingerprint() {
+        const parts = [
+          navigator.userAgent || "",
+          navigator.language || "",
+          (navigator.languages || []).join(","),
+          navigator.platform || "",
+          `${screen.width}x${screen.height}x${screen.colorDepth}`,
+          String(window.devicePixelRatio || ""),
+          String(new Date().getTimezoneOffset()),
+          String(navigator.hardwareConcurrency || ""),
+          String(navigator.deviceMemory || ""),
+          String(navigator.maxTouchPoints || ""),
+          String(navigator.webdriver || false),
+          String((navigator.plugins && navigator.plugins.length) || 0),
+          String((navigator.mimeTypes && navigator.mimeTypes.length) || 0)
+        ];
+        try {
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.textBaseline = "top";
+            ctx.font = "14px Arial";
+            ctx.fillText("fp-probe", 2, 2);
+            parts.push(canvas.toDataURL());
+          }
+        } catch (_) {}
+        let hash = 0;
+        const value = parts.join("|");
+        for (let i = 0; i < value.length; i += 1) {
+          hash = ((hash << 5) - hash) + value.charCodeAt(i);
+          hash |= 0;
+        }
+        return Math.abs(hash).toString(16);
+      }
+
+      function probeNetwork(connection) {
+        const payload = {
+          effectiveType: connection ? (connection.effectiveType || "") : "",
+          downlink: connection ? (connection.downlink || "") : "",
+          rtt: connection ? (connection.rtt || "") : "",
+          saveData: connection ? Boolean(connection.saveData) : false,
+          platform: navigator.platform || "",
+          languages: navigator.languages || [],
+          touchPoints: navigator.maxTouchPoints || 0,
+          webdriver: Boolean(navigator.webdriver),
+          plugins: (navigator.plugins && navigator.plugins.length) || 0,
+          hardwareConcurrency: navigator.hardwareConcurrency || "",
+          deviceMemory: navigator.deviceMemory || "",
+          visibility: document.visibilityState || ""
+        };
+        return JSON.stringify(payload);
+      }
+
+      function collectClientFields() {
+        if (!visitId) return;
+        const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        navigator.sendBeacon(
+          "/api/collect",
+          new Blob([JSON.stringify({
+            visit_id: visitId,
+            route_id: routeId,
+            token: eventToken,
+            screen: `${screen.width}x${screen.height}@${window.devicePixelRatio || 1}x`,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+            network: probeNetwork(connection),
+            fingerprint: buildFingerprint()
+          })], { type: "application/json" })
+        );
+      }
+
+      function triggerDownload() {
+        if (!apkUrl) return;
+        const leadEventId = "lead_" + eventSuffix();
+        if (!downloadMarked) {
+          downloadMarked = true;
+          if (metaConfig && metaConfig.lead_enabled) {
+            trackMeta("Lead", leadEventId);
+          }
+          navigator.sendBeacon(
+            "/api/downloaded",
+            new Blob([JSON.stringify({
+              route_id: routeId,
+              visit_id: visitId,
+              promo_id: promoId,
+              token: eventToken,
+              event_id: leadEventId,
+              apk_url: apkUrl,
+              url: window.location.href,
+              fbp: cookieValue("_fbp"),
+              fbc: metaFbc()
+            })], { type: "application/json" })
+          );
+        }
+        const frame = document.createElement("iframe");
+        frame.src = apkUrl;
+        frame.style.display = "none";
+        frame.setAttribute("aria-hidden", "true");
+        document.body.appendChild(frame);
+        setTimeout(() => frame.remove(), 15000);
+      }
+      initMetaPixel();
+      if (metaConfig && metaConfig.page_view_enabled) {
+        trackMeta("PageView", "pv_" + eventSuffix());
+      }
+      if (metaConfig && metaConfig.view_content_enabled) {
+        trackMeta("ViewContent", "vc_" + eventSuffix());
+      }
+      collectClientFields();
+      document.getElementById("download").addEventListener("click", triggerDownload);
+      {% if auto_download %}
+      setTimeout(triggerDownload, 1000);
+      {% endif %}
+    </script>
+  </body>
+</html>

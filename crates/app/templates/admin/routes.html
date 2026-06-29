@@ -1,0 +1,67 @@
+{% extends "admin/base.html" %}
+
+{% block title %}线路管理 - APK 分发后台{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>线路管理</h1>
+    <p>一条线路对应入口域名、真实目标、落地页配置和统计数据。</p>
+  </div>
+  <a class="btn primary" href="/admin/routes/new">新增线路</a>
+</header>
+
+{% match error %}
+{% when Some with (message) %}
+  <div class="alert danger">{{ message }}</div>
+{% when None %}
+{% endmatch %}
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>线路</th>
+        <th>入口域名</th>
+        <th>真实目标</th>
+        <th>落地页</th>
+        <th>访问</th>
+        <th>下载</th>
+        <th>状态</th>
+        <th>更新</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for route in routes %}
+      <tr>
+        <td>{{ route.name }}</td>
+        <td><code>{{ route.entry_domain }}</code></td>
+        <td>{{ route.target_type }} · {{ route.target_label }}</td>
+        <td>{{ route.landing_mode }}</td>
+        <td>{{ route.visits }}</td>
+        <td>{{ route.downloads }}</td>
+        <td>{% if route.enabled %}<span class="badge success">启用</span>{% else %}<span class="badge muted">停用</span>{% endif %}</td>
+        <td>{{ route.updated_at }}</td>
+        <td>
+          <div class="actions">
+            <a class="btn small" href="/admin/routes/{{ route.id }}/edit">编辑</a>
+            <form method="post" action="/admin/routes/{{ route.id }}/toggle">
+              <button class="btn small" type="submit">{% if route.enabled %}停用{% else %}启用{% endif %}</button>
+            </form>
+            <form method="post" action="/admin/routes/{{ route.id }}/delete" data-confirm="确认删除这条线路？相关落地配置、推广码和历史关联数据会受到影响。">
+              <button class="btn small danger" type="submit">删除</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if routes.len() == 0 %}
+      <tr>
+        <td class="empty" colspan="9">暂无线路，点击右上角新增第一条线路。</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

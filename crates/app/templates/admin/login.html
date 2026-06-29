@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>登录 - APK 分发后台</title>
+    <link rel="stylesheet" href="/static/admin.css">
+  </head>
+  <body class="login-body">
+    <main class="login-card">
+      <h1>APK 分发后台</h1>
+      <p>登录后管理线路、推广、模板和访问数据。</p>
+      {% match error %}
+      {% when Some with (message) %}
+        <div class="alert danger">{{ message }}</div>
+      {% when None %}
+      {% endmatch %}
+      <form method="post" action="/admin/login" class="form">
+        <label>
+          <span>账号</span>
+          <input name="username" autocomplete="username" required>
+        </label>
+        <label>
+          <span>密码</span>
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="btn primary" type="submit">登录</button>
+      </form>
+    </main>
+  </body>
+</html>

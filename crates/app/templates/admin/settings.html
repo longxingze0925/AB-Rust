@@ -1,0 +1,265 @@
+{% extends "admin/base.html" %}
+
+{% block title %}系统设置 - APK 分发后台{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>系统设置</h1>
+    <p>管理后台账号安全、在线会话、审计日志和资源清理。</p>
+  </div>
+</header>
+
+{% match message %}
+{% when Some with (text) %}
+  <div class="alert success">{{ text }}</div>
+{% when None %}
+{% endmatch %}
+
+{% match error %}
+{% when Some with (text) %}
+  <div class="alert danger">{{ text }}</div>
+{% when None %}
+{% endmatch %}
+
+<section class="stats-grid">
+  <article class="card stat">
+    <span>当前发布颜色</span>
+    <strong>{{ release.active_color }}</strong>
+  </article>
+  <article class="card stat">
+    <span>当前服务</span>
+    <strong>{{ release.active_service }}</strong>
+  </article>
+  <article class="card stat">
+    <span>反代目标</span>
+    <strong>{{ release.active_proxy }}</strong>
+  </article>
+</section>
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>时间</th>
+        <th>状态</th>
+        <th>从</th>
+        <th>到</th>
+        <th>镜像</th>
+        <th>信息</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in release_history %}
+      <tr>
+        <td>{{ item.timestamp }}</td>
+        <td>
+          {% if item.status == "completed" %}
+            <span class="badge success">completed</span>
+          {% else if item.status == "rolled_back" %}
+            <span class="badge danger">rolled_back</span>
+          {% else %}
+            <span class="badge primary">{{ item.status }}</span>
+          {% endif %}
+        </td>
+        <td>{{ item.from_color }}</td>
+        <td>{{ item.to_color }}</td>
+        <td><code>{{ item.image }}</code></td>
+        <td class="truncate" title="{{ item.message }}">{{ item.message }}</td>
+      </tr>
+      {% endfor %}
+      {% if release_history.len() == 0 %}
+      <tr><td class="empty" colspan="6">暂无发布历史。</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel padded">
+  <h2>修改密码</h2>
+  <form class="form-grid" method="post" action="/admin/settings/change-password">
+    <label>
+      <span>旧密码</span>
+      <input name="old_password" type="password" autocomplete="current-password" required>
+    </label>
+    <label>
+      <span>新密码</span>
+      <input name="new_password" type="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <label>
+      <span>确认新密码</span>
+      <input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <div class="form-actions">
+      <button class="btn primary" type="submit">更新密码</button>
+      <span class="muted">更新后会保留当前会话，并下线其他会话。</span>
+    </div>
+  </form>
+</section>
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>账号</th>
+        <th>IP</th>
+        <th>User-Agent</th>
+        <th>创建时间</th>
+        <th>过期时间</th>
+        <th>状态</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for session in sessions %}
+      <tr>
+        <td>{{ session.username }}</td>
+        <td>{% match session.ip %}{% when Some with (ip) %}{{ ip }}{% when None %}-{% endmatch %}</td>
+        <td class="truncate" title="{{ session.user_agent }}">{{ session.user_agent }}</td>
+        <td>{{ session.created_at }}</td>
+        <td>{{ session.expires_at }}</td>
+        <td>
+          {% if session.current %}
+            <span class="badge primary">当前</span>
+          {% else %}
+            <span class="badge muted">在线</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if session.current %}
+            <button class="btn small" type="button" disabled>撤销</button>
+          {% else %}
+            <form method="post" action="/admin/settings/sessions/{{ session.id }}/revoke" data-confirm="确认撤销这个在线会话？对方需要重新登录。">
+              <button class="btn small danger" type="submit">撤销</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if sessions.len() == 0 %}
+      <tr><td class="empty" colspan="7">暂无在线会话。</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>时间</th>
+        <th>动作</th>
+        <th>对象</th>
+        <th>对象 ID</th>
+        <th>IP</th>
+        <th>详情</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for audit in audits %}
+      <tr>
+        <td>{{ audit.created_at }}</td>
+        <td><code>{{ audit.action }}</code></td>
+        <td>{{ audit.entity_type }}</td>
+        <td>{% match audit.entity_id %}{% when Some with (id) %}<code>{{ id }}</code>{% when None %}-{% endmatch %}</td>
+        <td>{% match audit.ip %}{% when Some with (ip) %}{{ ip }}{% when None %}-{% endmatch %}</td>
+        <td class="truncate" title="{{ audit.detail }}">{{ audit.detail }}</td>
+      </tr>
+      {% endfor %}
+      {% if audits.len() == 0 %}
+      <tr><td class="empty" colspan="6">暂无审计日志。</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel padded">
+  <h2>审计日志清理</h2>
+  <p class="muted">清理早于保留天数的审计日志。账号登录、改密、会话撤销和清理动作本身会继续写入新的审计记录。</p>
+  <form class="toolbar-form" method="post" action="/admin/settings/cleanup-audits" data-confirm="确认清理审计日志？早于保留天数的记录会被永久删除。">
+    <label>
+      <span>保留天数</span>
+      <input name="keep_days" type="number" min="7" max="3650" value="90" required>
+    </label>
+    <button class="btn danger" type="submit">清理审计日志</button>
+  </form>
+</section>
+
+<section class="panel padded">
+  <h2>IP 地区库</h2>
+  <p class="muted">当 Cloudflare 或代理没有提供地区和运营商头时，访问记录会按这里的 CIDR 规则兜底补全。</p>
+  <form class="toolbar-form" method="post" action="/admin/settings/ip-geo/add">
+    <label>
+      <span>CIDR</span>
+      <input name="cidr" placeholder="203.0.113.0/24" required>
+    </label>
+    <label>
+      <span>国家/地区</span>
+      <input name="country" placeholder="US" required>
+    </label>
+    <label>
+      <span>省/州</span>
+      <input name="province" placeholder="California">
+    </label>
+    <label>
+      <span>城市</span>
+      <input name="city" placeholder="Los Angeles">
+    </label>
+    <label>
+      <span>运营商</span>
+      <input name="isp" placeholder="Example ISP">
+    </label>
+    <label>
+      <span>来源</span>
+      <input name="source" value="manual">
+    </label>
+    <button class="btn primary" type="submit">保存规则</button>
+  </form>
+</section>
+
+<section class="panel table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>CIDR</th>
+        <th>国家/地区</th>
+        <th>省/州</th>
+        <th>城市</th>
+        <th>运营商</th>
+        <th>来源</th>
+        <th>更新时间</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for range in geo_ranges %}
+      <tr>
+        <td><code>{{ range.cidr }}</code></td>
+        <td>{{ range.country }}</td>
+        <td>{{ range.province }}</td>
+        <td>{{ range.city }}</td>
+        <td>{{ range.isp }}</td>
+        <td>{{ range.source }}</td>
+        <td>{{ range.updated_at }}</td>
+        <td>
+          <form method="post" action="/admin/settings/ip-geo/{{ range.id }}/delete" data-confirm="确认删除这条 IP 地区规则？后续访问将不再使用它补全地区。">
+            <button class="btn small danger" type="submit">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if geo_ranges.len() == 0 %}
+      <tr><td class="empty" colspan="8">暂无 IP 地区规则。</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel padded">
+  <h2>资源清理</h2>
+  <p class="muted">删除磁盘上已经没有数据库记录的孤儿素材文件和模板目录。正在被线路引用的素材或模板不会被删除。</p>
+  <form method="post" action="/admin/settings/cleanup-resources" data-confirm="确认清理孤儿资源？磁盘上无数据库记录的文件和模板目录会被删除。">
+    <button class="btn primary" type="submit">清理孤儿资源</button>
+  </form>
+</section>
+{% endblock %}
