@@ -11,10 +11,12 @@ services:
     environment:
       DATABASE_URL: postgres://ab:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/ab
       DATA_DIR: /data
+      PTR_RESOLVERS: ${PTR_RESOLVERS:-1.1.1.1,8.8.8.8}
       ACTIVE_PROXY_FILE: /app/deploy/active_proxy.conf
       RELEASE_HISTORY_FILE: /data/release-history.jsonl
     volumes:
       - app_data:/data
+      - ../geodata:/data/geodata:ro
       - ./active_proxy.conf:/app/deploy/active_proxy.conf:ro
       - ./active_tls_ask.conf:/app/deploy/active_tls_ask.conf:ro
     expose:
@@ -35,10 +37,12 @@ services:
     environment:
       DATABASE_URL: postgres://ab:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/ab
       DATA_DIR: /data
+      PTR_RESOLVERS: ${PTR_RESOLVERS:-1.1.1.1,8.8.8.8}
       ACTIVE_PROXY_FILE: /app/deploy/active_proxy.conf
       RELEASE_HISTORY_FILE: /data/release-history.jsonl
     volumes:
       - app_data:/data
+      - ../geodata:/data/geodata:ro
       - ./active_proxy.conf:/app/deploy/active_proxy.conf:ro
       - ./active_tls_ask.conf:/app/deploy/active_tls_ask.conf:ro
     expose:
@@ -68,8 +72,8 @@ services:
     environment:
       CADDY_EMAIL: ${CADDY_EMAIL:-admin@example.com}
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./active_tls_ask.conf:/etc/caddy/active_tls_ask.conf:ro

@@ -1,0 +1,240 @@
+{% extends "admin/base.html" %}
+
+{% block title %}落地页 - APK 分发后台{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>落地页</h1>
+    <p>管理线路可直接选择的落地页。模板和素材只在创建或编辑落地页时选择。</p>
+  </div>
+  <button class="btn primary" type="button" data-modal-open="landing-new">新增落地页</button>
+</header>
+
+{% match error %}
+{% when Some with (message) %}
+  <div class="alert danger">{{ message }}</div>
+{% when None %}
+{% endmatch %}
+
+<section class="panel table-wrap landing-table">
+  <table>
+    <thead>
+      <tr>
+        <th>落地页</th>
+        <th>页面资源</th>
+        <th>下载配置</th>
+        <th>状态</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in landing_profiles %}
+      <tr>
+        <td data-label="落地页">
+          <div class="cell-stack">
+            <strong class="table-title">{{ item.name }}</strong>
+            <span class="table-subtitle">{{ item.title }}</span>
+          </div>
+        </td>
+        <td data-label="页面资源">
+          <div class="cell-stack">
+            <strong>{% if item.landing_mode == "template" %}自定义模板{% else %}默认下载页{% endif %}</strong>
+            <span>
+              {% if item.landing_mode == "template" %}
+                模板：{% match item.template_name %}{% when Some with (name) %}{{ name }}{% when None %}未选择{% endmatch %}
+              {% else %}
+                展示图：{% match item.image_name %}{% when Some with (name) %}{{ name }}{% when None %}不展示{% endmatch %}
+              {% endif %}
+            </span>
+          </div>
+        </td>
+        <td data-label="下载配置">
+          <div class="cell-stack">
+            {% if item.apk_url != "" %}<code>{{ item.apk_url }}</code>{% else %}<span class="table-subtitle">未配置下载直链</span>{% endif %}
+            <span>{% if item.auto_download %}<span class="badge success">自动下载</span>{% else %}<span class="badge muted">手动下载</span>{% endif %}</span>
+          </div>
+        </td>
+        <td data-label="状态">{% if item.enabled %}<span class="badge success">启用</span>{% else %}<span class="badge muted">停用</span>{% endif %}</td>
+        <td data-label="操作">
+          <div class="actions">
+            <button class="btn small" type="button" data-modal-open="landing-{{ item.id }}">编辑</button>
+            <form method="post" action="/admin/landing/profiles/{{ item.id }}/toggle">
+              <button class="btn small" type="submit">{% if item.enabled %}停用{% else %}启用{% endif %}</button>
+            </form>
+            <form method="post" action="/admin/landing/profiles/{{ item.id }}/delete" data-confirm="确认删除这个落地页？如果仍被线路引用，后台会阻止删除。">
+              <button class="btn small danger" type="submit">删除</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if landing_profiles.len() == 0 %}
+      <tr>
+        <td class="empty" colspan="5">暂无落地页。点击右上角新增一个默认下载页或自定义模板页。</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<dialog class="modal-dialog wide" id="landing-new">
+  <form class="modal-card" method="post" action="/admin/landing/profiles/save" enctype="multipart/form-data">
+    <div class="modal-header">
+      <div>
+        <h2>新增落地页</h2>
+        <p>选择默认下载页或自定义模板，只填写当前类型需要的内容。</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭">×</button>
+    </div>
+    <div class="resource-form modal-form">
+      <label>
+        <span>名称</span>
+        <input name="name" placeholder="主落地页" required>
+      </label>
+      <label>
+        <span>页面类型</span>
+        <select name="landing_mode" data-toggle-target="landing-new">
+          <option value="default">默认下载页</option>
+          <option value="template">自定义模板</option>
+        </select>
+      </label>
+      <label data-mode-field="landing-new:template">
+        <span>选择已有模板</span>
+        <select name="template_id">
+          <option value="">不选择，使用下方上传的新模板</option>
+          {% for item in templates %}
+          <option value="{{ item.id }}">{{ item.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label data-mode-field="landing-new:template">
+        <span>上传新模板 ZIP</span>
+        <input name="template_file" type="file" accept=".zip,application/zip">
+      </label>
+      <label data-mode-field="landing-new:template" class="span-2">
+        <span>新模板名称</span>
+        <input name="template_name" placeholder="上传新模板时填写">
+      </label>
+      <label data-mode-field="landing-new:default">
+        <span>选择已有展示图</span>
+        <select name="image_asset_id">
+          <option value="">不展示图片</option>
+          {% for item in assets %}
+          <option value="{{ item.id }}">{{ item.original_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label data-mode-field="landing-new:default">
+        <span>上传新展示图</span>
+        <input name="asset_file" type="file" accept="image/*">
+      </label>
+      <label>
+        <span>标题</span>
+        <input name="title" value="下载" required>
+      </label>
+      <label>
+        <span>APK 下载直链</span>
+        <input name="apk_url" placeholder="https://cdn.example.com/app.apk">
+      </label>
+      <div class="switch-row">
+        <label class="switch-field">
+          <input type="checkbox" name="auto_download" value="1" checked>
+          <span class="switch-ui"></span>
+          <strong>自动下载</strong>
+        </label>
+        <label class="switch-field">
+          <input type="checkbox" name="enabled" value="1" checked>
+          <span class="switch-ui"></span>
+          <strong>启用</strong>
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-modal-close>取消</button>
+      <button class="btn primary" type="submit">保存落地页</button>
+    </div>
+  </form>
+</dialog>
+
+{% for item in landing_profiles %}
+<dialog class="modal-dialog wide" id="landing-{{ item.id }}">
+  <form class="modal-card" method="post" action="/admin/landing/profiles/{{ item.id }}/update" enctype="multipart/form-data">
+    <div class="modal-header">
+      <div>
+        <h2>编辑落地页</h2>
+        <p>{{ item.name }}</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭">×</button>
+    </div>
+    <div class="resource-form modal-form">
+      <label>
+        <span>名称</span>
+        <input name="name" value="{{ item.name }}" required>
+      </label>
+      <label>
+        <span>页面类型</span>
+        <select name="landing_mode" data-toggle-target="landing-{{ item.id }}">
+          <option value="default" {% if item.landing_mode == "default" %}selected{% endif %}>默认下载页</option>
+          <option value="template" {% if item.landing_mode == "template" %}selected{% endif %}>自定义模板</option>
+        </select>
+      </label>
+      <label data-mode-field="landing-{{ item.id }}:template">
+        <span>选择已有模板</span>
+        <select name="template_id">
+          <option value="">不选择，使用下方上传的新模板</option>
+          {% for template in templates %}
+          <option value="{{ template.id }}" {% if item.template_id_value == template.id.to_string() %}selected{% endif %}>{{ template.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label data-mode-field="landing-{{ item.id }}:template">
+        <span>上传新模板 ZIP</span>
+        <input name="template_file" type="file" accept=".zip,application/zip">
+      </label>
+      <label data-mode-field="landing-{{ item.id }}:template" class="span-2">
+        <span>新模板名称</span>
+        <input name="template_name" placeholder="上传新模板时填写">
+      </label>
+      <label data-mode-field="landing-{{ item.id }}:default">
+        <span>选择已有展示图</span>
+        <select name="image_asset_id">
+          <option value="">不展示图片</option>
+          {% for asset in assets %}
+          <option value="{{ asset.id }}" {% if item.image_asset_id_value == asset.id.to_string() %}selected{% endif %}>{{ asset.original_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label data-mode-field="landing-{{ item.id }}:default">
+        <span>上传新展示图</span>
+        <input name="asset_file" type="file" accept="image/*">
+      </label>
+      <label>
+        <span>标题</span>
+        <input name="title" value="{{ item.title }}" required>
+      </label>
+      <label>
+        <span>APK 下载直链</span>
+        <input name="apk_url" value="{{ item.apk_url }}">
+      </label>
+      <div class="switch-row">
+        <label class="switch-field">
+          <input type="checkbox" name="auto_download" value="1" {% if item.auto_download %}checked{% endif %}>
+          <span class="switch-ui"></span>
+          <strong>自动下载</strong>
+        </label>
+        <label class="switch-field">
+          <input type="checkbox" name="enabled" value="1" {% if item.enabled %}checked{% endif %}>
+          <span class="switch-ui"></span>
+          <strong>启用</strong>
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-modal-close>取消</button>
+      <button class="btn primary" type="submit">保存</button>
+    </div>
+  </form>
+</dialog>
+{% endfor %}
+{% endblock %}

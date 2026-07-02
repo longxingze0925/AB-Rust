@@ -154,8 +154,10 @@ safe_refresh_source() {
     fi
   done
   [[ -d "$INSTALL_DIR/$BACKUP_DIR" ]] && { mkdir -p "$tmp/$BACKUP_DIR"; cp -a "$INSTALL_DIR/$BACKUP_DIR/." "$tmp/$BACKUP_DIR/"; }
+  [[ -d "$INSTALL_DIR/geodata" ]] && { mkdir -p "$tmp/geodata"; cp -a "$INSTALL_DIR/geodata/." "$tmp/geodata/"; }
   find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 \
     ! -name "$BACKUP_DIR" ! -name "$ENV_FILE" ! -name "$STATE_FILE" \
+    ! -name "geodata" \
     -exec rm -rf {} +
   cp -a "$tmp/." "$INSTALL_DIR/"
   rm -rf "$tmp"
@@ -208,6 +210,8 @@ write_env_if_missing() {
   set_env "$INSTALL_DIR/$ENV_FILE" META_TOKEN_KEY "$meta_key"
   set_env "$INSTALL_DIR/$ENV_FILE" APP_IMAGE_BLUE "$IMAGE"
   set_env "$INSTALL_DIR/$ENV_FILE" APP_IMAGE_GREEN "$IMAGE"
+  set_env "$INSTALL_DIR/$ENV_FILE" DATA_DIR "/data"
+  set_env "$INSTALL_DIR/$ENV_FILE" PTR_RESOLVERS "1.1.1.1,8.8.8.8"
   set_env "$INSTALL_DIR/$ENV_FILE" ACTIVE_PROXY_FILE "/app/deploy/active_proxy.conf"
   set_env "$INSTALL_DIR/$ENV_FILE" RELEASE_HISTORY_FILE "/data/release-history.jsonl"
   set_env "$INSTALL_DIR/$ENV_FILE" RUST_LOG "info,ab_app=debug"
@@ -229,6 +233,54 @@ install_local_command() {
   printf '已注册全局命令：ab-rust\n'
 }
 
+check_geodata() {
+  local dir="$INSTALL_DIR/geodata"
+  mkdir -p "$dir"
+
+  download_ip2asn() {
+    local version="$1"
+    local size="$2"
+    local file="$dir/ip2asn-${version}.tsv"
+    if [[ ! -f "$file" ]]; then
+      log "下载 IP-to-ASN ${version^^} 运营商库 (${size})"
+      if curl -fsSL --max-time 120 "https://iptoasn.com/data/ip2asn-${version}.tsv.gz" \
+          | gunzip > "$file" 2>/dev/null && [[ -s "$file" ]]; then
+        printf '✓ %s 运营商库下载完成\n' "${version^^}"
+      else
+        rm -f "$file"
+        warn "${version^^} 运营商库下载失败，对应 IP 运营商/分流识别将不可用。手动下载："
+        printf '  curl -L https://iptoasn.com/data/ip2asn-%s.tsv.gz | gunzip > %s/ip2asn-%s.tsv\n' "$version" "$dir" "$version"
+      fi
+    else
+      printf '✓ %s 运营商库已存在\n' "${version^^}"
+    fi
+  }
+
+  download_ip2asn "v4" "~6MB"
+  download_ip2asn "v6" "~8MB"
+
+  if ! find "$dir" -name '*.mmdb' -size +1M 2>/dev/null | grep -q .; then
+    log "下载 DB-IP City Lite 城市库 (~30MB，约需 30-60 秒)"
+    local month url file
+    month="$(date +%Y-%m)"
+    file="$dir/dbip-city-lite-${month}.mmdb"
+    url="https://download.db-ip.com/free/dbip-city-lite-${month}.mmdb.gz"
+    if curl -fsSL --max-time 180 "$url" \
+        | gunzip > "$file" 2>/dev/null && [[ -s "$file" ]]; then
+      printf '✓ 城市库下载完成\n'
+    else
+      rm -f "$file"
+      warn "城市库下载失败（可能本月版本未发布），省/市识别将不可用。"
+      printf '手动下载（免费，无需注册）：\n'
+      printf '  1. 访问 https://db-ip.com/db/download/ip-to-city-lite\n'
+      printf '  2. 下载 .mmdb.gz，解压后放入 %s/\n' "$dir"
+      printf '  3. 重启服务生效\n'
+    fi
+  else
+    printf '✓ 城市库已存在\n'
+  fi
+}
+
 install_flow() {
   require_root
   preflight
@@ -243,6 +295,7 @@ install_flow() {
   init_active_files
   write_env_if_missing
   write_state
+  check_geodata
 
   log "拉取镜像"
   in_install_dir
@@ -312,6 +365,7 @@ update_flow() {
   safe_refresh_source
   init_active_files
   write_state
+  check_geodata
 
   log "拉取最新镜像"
   in_install_dir
@@ -363,6 +417,17 @@ doctor_flow() {
     || printf 'compose     : 缺失\n'
   command -v curl >/dev/null 2>&1 && printf 'curl        : 正常\n' || printf 'curl        : 缺失\n'
   command -v openssl >/dev/null 2>&1 && printf 'openssl     : 正常\n' || printf 'openssl     : 缺失\n'
+
+  local gdir="$INSTALL_DIR/geodata"
+  [[ -f "$gdir/ip2asn-v4.tsv" ]] \
+    && printf 'ip2asn-v4   : 正常\n' \
+    || printf 'ip2asn-v4   : 缺失（IPv4 ASN/机房识别不可用）\n'
+  [[ -f "$gdir/ip2asn-v6.tsv" ]] \
+    && printf 'ip2asn-v6   : 正常\n' \
+    || printf 'ip2asn-v6   : 缺失（IPv6 ASN/机房识别不可用）\n'
+  find "$gdir" -name "*.mmdb" 2>/dev/null | grep -q . \
+    && printf '城市库(.mmdb): 正常\n' \
+    || printf '城市库(.mmdb): 缺失（省市识别不可用）\n'
 
   printf '\n磁盘空间：\n'
   df -h "$INSTALL_DIR" 2>/dev/null || df -h /

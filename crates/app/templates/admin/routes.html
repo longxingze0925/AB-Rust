@@ -17,7 +17,7 @@
 {% when None %}
 {% endmatch %}
 
-<section class="panel table-wrap">
+<section class="panel table-wrap route-table">
   <table>
     <thead>
       <tr>
@@ -38,9 +38,25 @@
         <td>{{ route.name }}</td>
         <td><code>{{ route.entry_domain }}</code></td>
         <td>{{ route.target_type }} · {{ route.target_label }}</td>
-        <td>{{ route.landing_mode }}</td>
-        <td>{{ route.visits }}</td>
-        <td>{{ route.downloads }}</td>
+        <td>
+          <div class="cell-stack">
+            <strong>{% match route.landing_profile_name %}{% when Some with (name) %}{{ name }}{% when None %}历史兼容配置{% endmatch %}</strong>
+            <span class="table-subtitle">{% if route.landing_mode == "template" %}自定义模板{% else %}默认下载页{% endif %}</span>
+          </div>
+        </td>
+        <td>
+          <div class="metric-stack">
+            <strong>总 {{ route.visits }}</strong>
+            <span>真 {{ route.real_visits }} · 假 {{ route.fake_visits }}</span>
+          </div>
+        </td>
+        <td>
+          <div class="metric-stack">
+            <strong>触发 {{ route.downloads }}</strong>
+            <span>真 {{ route.real_downloads }} · 假 {{ route.fake_downloads }}</span>
+            <span>总设备 {{ route.unique_device_downloads }} · 总 IP {{ route.unique_ip_downloads }}</span>
+          </div>
+        </td>
         <td>{% if route.enabled %}<span class="badge success">启用</span>{% else %}<span class="badge muted">停用</span>{% endif %}</td>
         <td>{{ route.updated_at }}</td>
         <td>

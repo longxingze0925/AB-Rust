@@ -7,25 +7,42 @@
     <link rel="stylesheet" href="/static/admin.css">
   </head>
   <body class="login-body">
-    <main class="login-card">
-      <h1>APK 分发后台</h1>
-      <p>登录后管理线路、推广、模板和访问数据。</p>
-      {% match error %}
-      {% when Some with (message) %}
-        <div class="alert danger">{{ message }}</div>
-      {% when None %}
-      {% endmatch %}
-      <form method="post" action="/admin/login" class="form">
-        <label>
-          <span>账号</span>
-          <input name="username" autocomplete="username" required>
-        </label>
-        <label>
-          <span>密码</span>
-          <input name="password" type="password" autocomplete="current-password" required>
-        </label>
-        <button class="btn primary" type="submit">登录</button>
-      </form>
+    <main class="login-shell">
+      <section class="login-card">
+        <div class="login-brand">
+          <div class="brand-mark">AB</div>
+          <div>
+            <strong>APK 分发后台</strong>
+            <span>Private Console</span>
+          </div>
+        </div>
+        <h1>账号登录</h1>
+        {% match error %}
+        {% when Some with (message) %}
+          <div class="alert danger">{{ message }}</div>
+        {% when None %}
+        {% endmatch %}
+        <form method="post" action="/admin/login" class="form">
+          <label>
+            <span>账号</span>
+            <input name="username" autocomplete="username" required>
+          </label>
+          <label>
+            <span>密码</span>
+            <input name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <button class="btn primary full" type="submit">登录</button>
+        </form>
+      </section>
+      <section class="login-side" aria-hidden="true">
+        <span class="eyebrow">AB Rust</span>
+        <h2>Distribution Control</h2>
+        <div class="login-grid-lines">
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+        </div>
+      </section>
     </main>
   </body>
 </html>

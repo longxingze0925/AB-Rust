@@ -3,10 +3,10 @@
 {% block title %}数据总览 - APK 分发后台{% endblock %}
 
 {% block content %}
-<header class="page-header">
+<header class="page-header dashboard-header">
   <div>
     <h1>数据总览</h1>
-    <p>查看访问、下载、线路、推广码、模板和分流状态。</p>
+    <p>查看今日流量、下载、分流结果和最近访问。</p>
   </div>
 </header>
 
@@ -16,49 +16,131 @@
 {% when None %}
 {% endmatch %}
 
-<section class="stats-grid">
-  <article class="card stat">
+<section class="dashboard-primary-grid">
+  <article class="dashboard-primary-card">
     <span>今日访问</span>
     <strong>{{ stats.today_visits }}</strong>
+    <small>今天进入落地页的请求</small>
   </article>
-  <article class="card stat">
-    <span>今日下载</span>
+  <article class="dashboard-primary-card">
+    <span>今日下载触发</span>
     <strong>{{ stats.today_downloads }}</strong>
+    <small>点击或触发下载的次数</small>
   </article>
-  <article class="card stat">
-    <span>启用线路</span>
-    <strong>{{ stats.enabled_routes }}</strong>
+  <article class="dashboard-primary-card">
+    <span>今日真实下载</span>
+    <strong>{{ stats.today_real_downloads }}</strong>
+    <small>真实页产生的下载</small>
   </article>
-  <article class="card stat">
-    <span>模板数量</span>
-    <strong>{{ stats.total_templates }}</strong>
-  </article>
-  <article class="card stat">
-    <span>总访问</span>
-    <strong>{{ stats.total_visits }}</strong>
-  </article>
-  <article class="card stat">
-    <span>总下载</span>
-    <strong>{{ stats.total_downloads }}</strong>
-  </article>
-  <article class="card stat">
-    <span>启用推广码</span>
-    <strong>{{ stats.enabled_promos }}</strong>
-  </article>
-  <article class="card stat">
-    <span>独立设备</span>
-    <strong>{{ stats.unique_devices }}</strong>
+  <article class="dashboard-primary-card">
+    <span>今日设备去重下载</span>
+    <strong>{{ stats.today_unique_device_downloads }}</strong>
+    <small>同设备当天只算一次</small>
   </article>
 </section>
 
-<div class="dashboard-grid">
-  <section class="panel table-wrap">
+<section class="dashboard-insight-grid">
+  <article class="panel dashboard-insight-panel">
+    <div class="panel-header">
+      <div>
+        <h2>访问分流</h2>
+        <p>真实、假页、探针的命中情况</p>
+      </div>
+    </div>
+    <div class="dashboard-split-list">
+      <div class="dashboard-split-row">
+        <div>
+          <span class="badge success">真实</span>
+          <strong>真实访问</strong>
+        </div>
+        <b>{{ stats.real_visits }}</b>
+      </div>
+      <div class="dashboard-split-row">
+        <div>
+          <span class="badge danger">假页</span>
+          <strong>假页访问</strong>
+        </div>
+        <b>{{ stats.fake_visits }}</b>
+      </div>
+      {% for item in stats.variants %}
+        {% if item.page_variant == "probe" %}
+        <div class="dashboard-split-row">
+          <div>
+            <span class="badge primary">探针</span>
+            <strong>探针确认</strong>
+          </div>
+          <b>{{ item.count }}</b>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </article>
+
+  <article class="panel dashboard-insight-panel">
+    <div class="panel-header">
+      <div>
+        <h2>下载质量</h2>
+        <p>总下载与去重下载</p>
+      </div>
+    </div>
+    <div class="dashboard-metric-list">
+      <div><span>总下载触发</span><strong>{{ stats.total_downloads }}</strong></div>
+      <div><span>真实下载</span><strong>{{ stats.real_downloads }}</strong></div>
+      <div><span>假页下载</span><strong>{{ stats.fake_downloads }}</strong></div>
+      <div><span>设备去重下载</span><strong>{{ stats.unique_device_downloads }}</strong></div>
+      <div><span>IP 去重下载</span><strong>{{ stats.unique_ip_downloads }}</strong></div>
+      <div><span>今日假页下载</span><strong>{{ stats.today_fake_downloads }}</strong></div>
+    </div>
+  </article>
+
+  <article class="panel dashboard-insight-panel">
+    <div class="panel-header">
+      <div>
+        <h2>资源状态</h2>
+        <p>当前可用的运营配置</p>
+      </div>
+    </div>
+    <div class="dashboard-resource-list">
+      <div>
+        <span>线路</span>
+        <strong>{{ stats.enabled_routes }} / {{ stats.total_routes }}</strong>
+        <small>启用 / 全部</small>
+      </div>
+      <div>
+        <span>推广码</span>
+        <strong>{{ stats.enabled_promos }} / {{ stats.total_promos }}</strong>
+        <small>启用 / 全部</small>
+      </div>
+      <div>
+        <span>落地页</span>
+        <strong>{{ stats.total_landing_profiles }}</strong>
+        <small>可选落地页数量</small>
+      </div>
+      <div>
+        <span>独立设备</span>
+        <strong>{{ stats.unique_devices }}</strong>
+        <small>已采集指纹的设备</small>
+      </div>
+    </div>
+  </article>
+</section>
+
+<section class="panel table-panel">
+  <div class="panel-header">
+    <div>
+      <h2>近 7 日趋势</h2>
+      <p>按自然日统计核心访问和下载数据</p>
+    </div>
+  </div>
+  <div class="table-wrap compact-table dashboard-trend-table">
     <table>
       <thead>
         <tr>
           <th>日期</th>
           <th>访问</th>
-          <th>下载</th>
+          <th>下载触发</th>
+          <th>真实下载</th>
+          <th>设备去重下载</th>
         </tr>
       </thead>
       <tbody>
@@ -67,65 +149,71 @@
           <td>{{ item.day }}</td>
           <td>{{ item.visits }}</td>
           <td>{{ item.downloads }}</td>
+          <td>{{ item.real_downloads }}</td>
+          <td>{{ item.unique_device_downloads }}</td>
         </tr>
         {% endfor %}
         {% if stats.daily.len() == 0 %}
-        <tr><td class="empty" colspan="3">暂无趋势数据。</td></tr>
+        <tr><td class="empty" colspan="5">暂无趋势数据。</td></tr>
         {% endif %}
       </tbody>
     </table>
-  </section>
+  </div>
+</section>
 
-  <section class="panel table-wrap">
+<section class="panel table-panel">
+  <div class="panel-header">
+    <div>
+      <h2>最近访问</h2>
+      <p>最新入口请求</p>
+    </div>
+    <a class="btn small" href="/admin/visits">查看全部</a>
+  </div>
+  <div class="table-wrap compact-table dashboard-recent-table">
     <table>
       <thead>
         <tr>
-          <th>页面类型</th>
-          <th>次数</th>
+          <th>时间</th>
+          <th>线路</th>
+          <th>页面结果</th>
+          <th>IP</th>
+          <th>下载状态</th>
         </tr>
       </thead>
       <tbody>
-        {% for item in stats.variants %}
+        {% for visit in stats.recent %}
         <tr>
-          <td>{{ item.page_variant }}</td>
-          <td>{{ item.count }}</td>
+          <td>{{ visit.created_at }}</td>
+          <td>
+            <div class="cell-stack">
+              <strong>{{ visit.route_name }}</strong>
+              {% if visit.promo_code != "" %}
+              <span>推广码：<code>{{ visit.promo_code }}</code></span>
+              {% else %}
+              <span>无推广码</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            {% if visit.page_variant == "real" %}
+            <span class="badge success">真实</span>
+            {% else if visit.page_variant == "fake" %}
+            <span class="badge danger">假页</span>
+            {% else if visit.page_variant == "probe" %}
+            <span class="badge primary">探针</span>
+            {% else %}
+            <span class="badge muted">{{ visit.page_variant }}</span>
+            {% endif %}
+          </td>
+          <td>{% match visit.ip %}{% when Some with (ip) %}{{ ip }}{% when None %}-{% endmatch %}</td>
+          <td>{% if visit.downloaded %}<span class="badge success">已下载</span>{% else %}<span class="badge muted">未下载</span>{% endif %}</td>
         </tr>
         {% endfor %}
-        {% if stats.variants.len() == 0 %}
-        <tr><td class="empty" colspan="2">暂无页面类型数据。</td></tr>
+        {% if stats.recent.len() == 0 %}
+        <tr><td class="empty" colspan="5">暂无最近访问。</td></tr>
         {% endif %}
       </tbody>
     </table>
-  </section>
-</div>
-
-<section class="panel table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>时间</th>
-        <th>线路</th>
-        <th>推广码</th>
-        <th>页面</th>
-        <th>IP</th>
-        <th>下载</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for visit in stats.recent %}
-      <tr>
-        <td>{{ visit.created_at }}</td>
-        <td>{{ visit.route_name }}</td>
-        <td>{% if visit.promo_code != "" %}<code>{{ visit.promo_code }}</code>{% else %}-{% endif %}</td>
-        <td>{{ visit.page_variant }}</td>
-        <td>{% match visit.ip %}{% when Some with (ip) %}{{ ip }}{% when None %}-{% endmatch %}</td>
-        <td>{% if visit.downloaded %}<span class="badge success">已下载</span>{% else %}-{% endif %}</td>
-      </tr>
-      {% endfor %}
-      {% if stats.recent.len() == 0 %}
-      <tr><td class="empty" colspan="6">暂无最近访问。</td></tr>
-      {% endif %}
-    </tbody>
-  </table>
+  </div>
 </section>
 {% endblock %}

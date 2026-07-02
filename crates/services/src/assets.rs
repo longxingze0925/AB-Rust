@@ -97,18 +97,20 @@ impl AssetsService {
             .get(id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("素材不存在"))?;
-        let refs = sqlx::query_as::<_, (i64, i64)>(
+        let refs = sqlx::query_as::<_, (i64, i64, i64, i64)>(
             r#"
             SELECT
               (SELECT COUNT(*)::BIGINT FROM route_landing_configs WHERE image_asset_id = $1),
-              (SELECT COUNT(*)::BIGINT FROM route_cloak_configs WHERE decoy_image_asset_id = $1)
+              (SELECT COUNT(*)::BIGINT FROM route_cloak_configs WHERE decoy_image_asset_id = $1),
+              (SELECT COUNT(*)::BIGINT FROM landing_profiles WHERE image_asset_id = $1),
+              (SELECT COUNT(*)::BIGINT FROM cloak_policies WHERE decoy_image_asset_id = $1)
             "#,
         )
         .bind(id)
         .fetch_one(&self.pool)
         .await?;
-        if refs.0 > 0 || refs.1 > 0 {
-            anyhow::bail!("素材正在被线路引用，先在线路里移除后再删除");
+        if refs.0 > 0 || refs.1 > 0 || refs.2 > 0 || refs.3 > 0 {
+            anyhow::bail!("素材正在被落地页、分流策略或线路引用，先移除引用后再删除");
         }
 
         let path = self.file_path(&asset).ok();

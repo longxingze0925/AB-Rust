@@ -11,25 +11,42 @@
     <div class="shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-title">APK 分发后台</div>
-          <div class="brand-subtitle">线路 / 推广 / 访问 / 分流</div>
+          <div class="brand-mark">AB</div>
+          <div class="brand-copy">
+            <div class="brand-title">APK 分发后台</div>
+            <div class="brand-subtitle">Distribution Console</div>
+          </div>
         </div>
         <nav class="nav">
           <a class="nav-link {% if active == "dashboard" %}active{% endif %}" href="/admin">数据总览</a>
           <a class="nav-link {% if active == "routes" %}active{% endif %}" href="/admin/routes">线路管理</a>
+          <a class="nav-link {% if active == "domains" %}active{% endif %}" href="/admin/domains">域名库</a>
+          <a class="nav-link {% if active == "landing" %}active{% endif %}" href="/admin/landing">落地页</a>
+          <a class="nav-link {% if active == "cloak" %}active{% endif %}" href="/admin/cloak">分流策略</a>
+          <a class="nav-link {% if active == "meta" %}active{% endif %}" href="/admin/meta">Meta</a>
           <a class="nav-link {% if active == "promos" %}active{% endif %}" href="/admin/promos">推广码</a>
           <a class="nav-link {% if active == "visits" %}active{% endif %}" href="/admin/visits">访问记录</a>
-          <a class="nav-link {% if active == "templates" %}active{% endif %}" href="/admin/templates">模板管理</a>
-          <a class="nav-link {% if active == "assets" %}active{% endif %}" href="/admin/assets">素材管理</a>
-          <a class="nav-link {% if active == "cloak" %}active{% endif %}" href="/admin/cloak">分流策略</a>
-          <a class="nav-link {% if active == "meta" %}active{% endif %}" href="/admin/meta">Meta 事件</a>
           <a class="nav-link {% if active == "settings" %}active{% endif %}" href="/admin/settings">系统设置</a>
         </nav>
         <form class="sidebar-footer" method="post" action="/admin/logout">
+          <div class="session-card">
+            <span class="session-dot"></span>
+            <div>
+              <strong>管理会话</strong>
+              <span>已登录</span>
+            </div>
+          </div>
           <button class="logout" type="submit">退出登录</button>
         </form>
       </aside>
       <main class="main">
+        <header class="topbar">
+          <div>
+            <span class="eyebrow">AB Control</span>
+            <strong>运营工作台</strong>
+          </div>
+          <span class="status-pill"><span></span> 在线</span>
+        </header>
         <div class="content">
           {% block content %}{% endblock %}
         </div>
@@ -97,6 +114,86 @@
         dialog?.addEventListener("close", () => {
           pendingForm = null;
         });
+
+        document.addEventListener("click", (event) => {
+          const button = event.target;
+          const openButton = button instanceof HTMLElement ? button.closest("[data-modal-open]") : null;
+          if (openButton instanceof HTMLElement) {
+            const modal = document.getElementById(openButton.dataset.modalOpen || "");
+            if (modal instanceof HTMLDialogElement) {
+              modal.showModal();
+            }
+            return;
+          }
+          const closeButton = button instanceof HTMLElement ? button.closest("[data-modal-close]") : null;
+          if (closeButton instanceof HTMLElement) {
+            const modal = closeButton.closest("dialog");
+            if (modal instanceof HTMLDialogElement) {
+              modal.close();
+            }
+            return;
+          }
+          const copyButton = button instanceof HTMLElement ? button.closest("[data-copy-text]") : null;
+          if (copyButton instanceof HTMLElement) {
+            const text = copyButton.dataset.copyText || "";
+            if (navigator.clipboard && text) {
+              navigator.clipboard.writeText(text).then(() => {
+                const original = copyButton.textContent;
+                copyButton.textContent = "已复制";
+                window.setTimeout(() => {
+                  copyButton.textContent = original;
+                }, 1200);
+              });
+            }
+            return;
+          }
+          if (!(button instanceof HTMLElement) || !button.dataset.togglePanel) {
+            return;
+          }
+          const panel = document.getElementById(button.dataset.togglePanel);
+          if (!panel) {
+            return;
+          }
+          panel.hidden = !panel.hidden;
+          button.textContent = panel.hidden ? "编辑" : "收起";
+        });
+
+        const applyModeVisibility = (select) => {
+          const target = select.dataset.toggleTarget;
+          if (!target) return;
+          const value = select.value;
+          const scope = select.closest("dialog") || select.closest("form") || document;
+          for (const field of scope.querySelectorAll(`[data-mode-field^="${target}:"]`)) {
+            const mode = field.dataset.modeField.split(":")[1];
+            const hidden = mode !== value;
+            field.hidden = hidden;
+            for (const control of field.querySelectorAll("input, select, textarea, button")) {
+              control.disabled = hidden;
+            }
+          }
+        };
+        for (const select of document.querySelectorAll("select[data-toggle-target]")) {
+          applyModeVisibility(select);
+          select.addEventListener("change", () => applyModeVisibility(select));
+        }
+
+        const applyPreviewVisibility = (select) => {
+          const group = select.dataset.previewSelect;
+          if (!group) return;
+          const value = select.value;
+          const scope = select.closest("form") || document;
+          const placeholder = scope.querySelector(`[data-preview-placeholder="${group}"]`);
+          if (placeholder instanceof HTMLElement) {
+            placeholder.hidden = value !== "";
+          }
+          for (const item of scope.querySelectorAll(`[data-preview-option^="${group}:"]`)) {
+            item.hidden = item.dataset.previewOption !== `${group}:${value}`;
+          }
+        };
+        for (const select of document.querySelectorAll("select[data-preview-select]")) {
+          applyPreviewVisibility(select);
+          select.addEventListener("change", () => applyPreviewVisibility(select));
+        }
       })();
     </script>
   </body>

@@ -2,12 +2,15 @@
 /.env
 /.env.*
 !/.env.example
+/deploy/docker-compose.local.yml
 /data/*
 !/data/.gitkeep
 !/data/uploads/
 !/data/uploads/.gitkeep
 !/data/templates/
 !/data/templates/.gitkeep
+/geodata/*
+!/geodata/.gitkeep
 /backups/
 /imports/
 *.log

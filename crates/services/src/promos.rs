@@ -11,21 +11,8 @@ pub struct PromoSummary {
     pub entry_domain: String,
     pub code: String,
     pub name: String,
-    pub apk_url: Option<String>,
     pub enabled: bool,
-    pub visits: i64,
-    pub downloads: i64,
     pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
-pub struct PromoEdit {
-    pub id: Uuid,
-    pub route_id: Uuid,
-    pub code: String,
-    pub name: String,
-    pub apk_url: Option<String>,
-    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -33,7 +20,6 @@ pub struct PromoHit {
     pub id: Uuid,
     pub route_id: Uuid,
     pub code: String,
-    pub apk_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -41,7 +27,6 @@ pub struct SavePromoInput {
     pub route_id: Uuid,
     pub code: String,
     pub name: String,
-    pub apk_url: String,
     pub enabled: bool,
 }
 
@@ -65,16 +50,10 @@ impl PromosService {
               r.entry_domain,
               p.code,
               p.name,
-              p.apk_url,
               p.enabled,
-              COUNT(DISTINCT v.id)::BIGINT AS visits,
-              COUNT(DISTINCT d.id)::BIGINT AS downloads,
               p.created_at
             FROM promo_codes p
             JOIN routes r ON r.id = p.route_id
-            LEFT JOIN visits v ON v.promo_id = p.id
-            LEFT JOIN download_events d ON d.promo_id = p.id
-            GROUP BY p.id, r.name, r.entry_domain
             ORDER BY p.created_at DESC
             "#,
         )
@@ -83,34 +62,18 @@ impl PromosService {
         Ok(rows)
     }
 
-    pub async fn get_edit(&self, id: Uuid) -> anyhow::Result<Option<PromoEdit>> {
-        let row = sqlx::query_as::<_, PromoEdit>(
-            r#"
-            SELECT id, route_id, code, name, apk_url, enabled
-            FROM promo_codes
-            WHERE id = $1
-            LIMIT 1
-            "#,
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row)
-    }
-
     pub async fn create(&self, input: SavePromoInput) -> anyhow::Result<Uuid> {
         let row = normalize_input(input)?;
         let id = sqlx::query_scalar::<_, Uuid>(
             r#"
-            INSERT INTO promo_codes (route_id, code, name, apk_url, enabled)
-            VALUES ($1, $2, $3, NULLIF($4, ''), $5)
+            INSERT INTO promo_codes (route_id, code, name, enabled)
+            VALUES ($1, $2, $3, $4)
             RETURNING id
             "#,
         )
         .bind(row.route_id)
         .bind(row.code)
         .bind(row.name)
-        .bind(row.apk_url)
         .bind(row.enabled)
         .fetch_one(&self.pool)
         .await?;
@@ -125,15 +88,14 @@ impl PromosService {
             SET route_id = $1,
                 code = $2,
                 name = $3,
-                apk_url = NULLIF($4, ''),
-                enabled = $5
-            WHERE id = $6
+                apk_url = NULL,
+                enabled = $4
+            WHERE id = $5
             "#,
         )
         .bind(row.route_id)
         .bind(row.code)
         .bind(row.name)
-        .bind(row.apk_url)
         .bind(row.enabled)
         .bind(id)
         .execute(&self.pool)
@@ -172,7 +134,7 @@ impl PromosService {
         }
         let row = sqlx::query_as::<_, PromoHit>(
             r#"
-            SELECT id, route_id, code, apk_url
+            SELECT id, route_id, code
             FROM promo_codes
             WHERE route_id = $1 AND code = $2 AND enabled = TRUE
             LIMIT 1
@@ -195,7 +157,6 @@ fn normalize_input(input: SavePromoInput) -> anyhow::Result<SavePromoInput> {
         route_id: input.route_id,
         code,
         name: input.name.trim().to_string(),
-        apk_url: input.apk_url.trim().to_string(),
         enabled: input.enabled,
     })
 }

@@ -40,6 +40,7 @@ impl AuthService {
                     r#"
                     INSERT INTO users (username, password_hash, enabled)
                     VALUES ($1, $2, TRUE)
+                    ON CONFLICT (username) DO NOTHING
                     "#,
                 )
                 .bind(username)

@@ -6,9 +6,9 @@
 <header class="page-header">
   <div>
     <h1>推广码</h1>
-    <p>按线路管理渠道码，可为单个渠道设置专属 APK 下载直链。</p>
+    <p>推广码只负责标记渠道并绑定线路，落地页、APK、分流和 Meta 都跟随所选线路。</p>
   </div>
-  <a class="btn primary" href="/admin/promos/new">新增推广码</a>
+  <button class="btn primary" type="button" data-modal-open="promo-new">新增推广码</button>
 </header>
 
 {% match error %}
@@ -17,17 +17,23 @@
 {% when None %}
 {% endmatch %}
 
-<section class="panel table-wrap">
+{% if routes.len() == 0 %}
+<section class="panel padded">
+  <div class="empty-state">
+    <span>还没有可用线路。推广码必须绑定线路后才能创建。</span>
+    <a class="btn primary" href="/admin/routes/new">新增线路</a>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel table-wrap compact-table promo-table">
   <table>
     <thead>
       <tr>
         <th>推广码</th>
-        <th>名称</th>
-        <th>线路</th>
+        <th>备注</th>
+        <th>绑定线路</th>
         <th>入口链接</th>
-        <th>专属 APK</th>
-        <th>访问</th>
-        <th>下载</th>
         <th>状态</th>
         <th>创建</th>
         <th>操作</th>
@@ -37,17 +43,24 @@
       {% for promo in promos %}
       <tr>
         <td><code>{{ promo.code }}</code></td>
-        <td>{{ promo.name }}</td>
-        <td>{{ promo.route_name }}</td>
-        <td><code>https://{{ promo.entry_domain }}/?c={{ promo.code }}</code></td>
-        <td>{% match promo.apk_url %}{% when Some with (url) %}{{ url }}{% when None %}-{% endmatch %}</td>
-        <td>{{ promo.visits }}</td>
-        <td>{{ promo.downloads }}</td>
+        <td>{% if promo.name != "" %}{{ promo.name }}{% else %}-{% endif %}</td>
+        <td>
+          <div class="cell-stack">
+            <strong>{{ promo.route_name }}</strong>
+            <span class="table-subtitle">{{ promo.entry_domain }}</span>
+          </div>
+        </td>
+        <td>
+          <div class="copy-field">
+            <code>https://{{ promo.entry_domain }}/?c={{ promo.code }}</code>
+            <button class="btn small" type="button" data-copy-text="https://{{ promo.entry_domain }}/?c={{ promo.code }}">复制</button>
+          </div>
+        </td>
         <td>{% if promo.enabled %}<span class="badge success">启用</span>{% else %}<span class="badge muted">停用</span>{% endif %}</td>
         <td>{{ promo.created_at }}</td>
         <td>
           <div class="actions">
-            <a class="btn small" href="/admin/promos/{{ promo.id }}/edit">编辑</a>
+            <button class="btn small" type="button" data-modal-open="promo-{{ promo.id }}">编辑</button>
             <form method="post" action="/admin/promos/{{ promo.id }}/toggle">
               <button class="btn small" type="submit">{% if promo.enabled %}停用{% else %}启用{% endif %}</button>
             </form>
@@ -60,10 +73,96 @@
       {% endfor %}
       {% if promos.len() == 0 %}
       <tr>
-        <td class="empty" colspan="10">暂无推广码，点击右上角新增。</td>
+        <td class="empty" colspan="7">暂无推广码，点击右上角新增。</td>
       </tr>
       {% endif %}
     </tbody>
   </table>
 </section>
+
+{% if routes.len() > 0 %}
+<dialog class="modal-dialog" id="promo-new">
+  <form class="modal-card" method="post" action="/admin/promos/create">
+    <div class="modal-header">
+      <div>
+        <h2>新增推广码</h2>
+        <p>选择线路后，这个推广码会使用该线路的落地页、APK、分流策略和 Meta 配置。</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭">×</button>
+    </div>
+    <div class="resource-form modal-form">
+      <label>
+        <span>绑定线路</span>
+        <select name="route_id" required>
+          {% for route in routes %}
+          <option value="{{ route.id }}">{{ route.name }} · {{ route.entry_domain }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>推广码</span>
+        <input name="code" placeholder="A1B2C3" required>
+      </label>
+      <label class="span-2">
+        <span>备注</span>
+        <input name="name" placeholder="渠道、素材、投放组或说明">
+      </label>
+      <div class="switch-row">
+        <label class="switch-field">
+          <input type="checkbox" name="enabled" value="1" checked>
+          <span class="switch-ui"></span>
+          <strong>启用推广码</strong>
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-modal-close>取消</button>
+      <button class="btn primary" type="submit">添加推广码</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+
+{% for promo in promos %}
+<dialog class="modal-dialog" id="promo-{{ promo.id }}">
+  <form class="modal-card" method="post" action="/admin/promos/{{ promo.id }}/update">
+    <div class="modal-header">
+      <div>
+        <h2>编辑推广码</h2>
+        <p>{{ promo.code }}</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭">×</button>
+    </div>
+    <div class="resource-form modal-form">
+      <label>
+        <span>绑定线路</span>
+        <select name="route_id" required>
+          {% for route in routes %}
+          <option value="{{ route.id }}" {% if promo.route_id == route.id %}selected{% endif %}>{{ route.name }} · {{ route.entry_domain }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>推广码</span>
+        <input name="code" value="{{ promo.code }}" required>
+      </label>
+      <label class="span-2">
+        <span>备注</span>
+        <input name="name" value="{{ promo.name }}" placeholder="渠道、素材、投放组或说明">
+      </label>
+      <div class="switch-row">
+        <label class="switch-field">
+          <input type="checkbox" name="enabled" value="1" {% if promo.enabled %}checked{% endif %}>
+          <span class="switch-ui"></span>
+          <strong>启用推广码</strong>
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-modal-close>取消</button>
+      <button class="btn primary" type="submit">保存</button>
+    </div>
+  </form>
+</dialog>
+{% endfor %}
 {% endblock %}

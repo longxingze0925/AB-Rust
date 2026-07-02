@@ -111,14 +111,18 @@ impl TemplatesService {
             .get(id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("模板不存在"))?;
-        let refs = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*)::BIGINT FROM route_landing_configs WHERE template_id = $1",
+        let refs = sqlx::query_as::<_, (i64, i64)>(
+            r#"
+            SELECT
+              (SELECT COUNT(*)::BIGINT FROM route_landing_configs WHERE template_id = $1),
+              (SELECT COUNT(*)::BIGINT FROM landing_profiles WHERE template_id = $1)
+            "#,
         )
         .bind(id)
         .fetch_one(&self.pool)
         .await?;
-        if refs > 0 {
-            anyhow::bail!("模板正在被线路引用，先在线路里切换模板后再删除");
+        if refs.0 > 0 || refs.1 > 0 {
+            anyhow::bail!("模板正在被落地页或线路引用，先切换引用后再删除");
         }
 
         let dir = self.template_dir(&template.storage_key);

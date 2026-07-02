@@ -43,6 +43,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ops/deploy.ps1 -Build
 `ops/deploy.ps1` uses `deploy/docker-compose.yml`, starts PostgreSQL, the Rust app, and Caddy.
 Before starting containers it runs `ops/validate-env.ps1`. Set `POSTGRES_PASSWORD` and `DATABASE_URL` to non-default values. For production, also set `APP_ENV=production`, a real `APP_BASE_DOMAIN`, an `ADMIN_PASSWORD` with at least 12 characters, and a `META_TOKEN_KEY` with at least 32 characters.
 
+For local Docker validation on `http://127.0.0.1:3001`, include the local Compose override:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ops/deploy.ps1 -Build -Local
+```
+
 Run the environment check directly:
 
 ```powershell

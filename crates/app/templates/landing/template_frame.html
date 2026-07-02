@@ -21,7 +21,7 @@
     </style>
   </head>
   <body>
-    <iframe title="landing-template" src="{{ template_url }}" sandbox="allow-scripts allow-forms"></iframe>
+    <iframe title="landing-template" src="{{ template_url }}" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
     <script>
       const apkUrl = {{ apk_url_json|safe }};
       const routeId = "{{ route_id }}";

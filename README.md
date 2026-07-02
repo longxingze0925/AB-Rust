@@ -45,6 +45,16 @@ bash <(curl -fsSL https://raw.githubusercontent.com/longxingze0925/AB-Rust/main/
 
 安装脚本会检查 Docker/Compose、下载部署文件、生成 `.env`、拉取 `ghcr.io/longxingze0925/ab-rust:latest` 镜像、启动 PostgreSQL + Rust app + Caddy，并注册 `ab-rust` 管理命令。
 
+安装和更新时会自动准备 `geodata/`：
+
+| 文件 | 用途 |
+| --- | --- |
+| `ip2asn-v4.tsv` | IPv4 ASN / 运营商 / 机房识别 |
+| `ip2asn-v6.tsv` | IPv6 ASN / 运营商 / 机房识别 |
+| `dbip-city-lite-*.mmdb` | 国家、省、市识别数据 |
+
+`ip2asn` 文件从 `iptoasn.com` 下载，城市库从 `db-ip.com` 免费库下载。服务器无外网时，可以提前把解压后的文件放到安装目录的 `geodata/`，脚本检测到文件存在会跳过下载。PTR 反查 DNS 可通过 `.env` 的 `PTR_RESOLVERS=1.1.1.1,8.8.8.8` 调整。
+
 ### 手动/Windows 部署
 
 部署、备份、旧 Next.js SQLite 数据导入脚本放在 `ops/`：
@@ -52,6 +62,12 @@ bash <(curl -fsSL https://raw.githubusercontent.com/longxingze0925/AB-Rust/main/
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File ops/deploy.ps1 -Build
 python ops/import_legacy_sqlite.py --sqlite C:\Users\1\Desktop\ab\data\app.db --out imports\legacy.sql
+```
+
+本机 Docker 验证需要暴露 `127.0.0.1:3001` 时，加 `-Local`：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ops/deploy.ps1 -Build -Local
 ```
 
 具体步骤见 `ops/README.md`。

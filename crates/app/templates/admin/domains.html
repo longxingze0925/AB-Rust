@@ -1,0 +1,145 @@
+{% extends "admin/base.html" %}
+
+{% block title %}域名库 - APK 分发后台{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>域名库</h1>
+    <p>统一维护入口域名和出口域名。线路管理只负责选择已经准备好的域名。</p>
+  </div>
+  <button class="btn primary" type="button" data-modal-open="domain-new">新增域名</button>
+</header>
+
+{% match error %}
+{% when Some with (message) %}
+  <div class="alert danger">{{ message }}</div>
+{% when None %}
+{% endmatch %}
+
+<section class="panel table-wrap domain-table">
+  <table>
+    <thead>
+      <tr>
+        <th>域名</th>
+        <th>类型</th>
+        <th>状态</th>
+        <th>引用线路</th>
+        <th>备注</th>
+        <th>更新时间</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in domains %}
+      <tr>
+        <td><code>{{ item.domain }}</code></td>
+        <td>{% if item.role == "exit" %}出口域名{% else %}入口域名{% endif %}</td>
+        <td>{% if item.enabled %}<span class="badge success">启用</span>{% else %}<span class="badge muted">停用</span>{% endif %}</td>
+        <td>{% match item.used_by_route %}{% when Some with (route) %}{{ route }}{% when None %}-{% endmatch %}</td>
+        <td>{{ item.note }}</td>
+        <td>{{ item.updated_at }}</td>
+        <td>
+          <div class="actions">
+            <button class="btn small" type="button" data-modal-open="domain-{{ item.id }}">编辑</button>
+            <form method="post" action="/admin/domains/{{ item.id }}/toggle">
+              <button class="btn small" type="submit">{% if item.enabled %}停用{% else %}启用{% endif %}</button>
+            </form>
+            <form method="post" action="/admin/domains/{{ item.id }}/delete" data-confirm="确认删除这个域名？如果域名仍被线路引用，后台会阻止删除。">
+              <button class="btn small danger" type="submit">删除</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if domains.len() == 0 %}
+      <tr>
+        <td class="empty" colspan="7">暂无域名。先添加出口域名，再到线路管理里选择使用。</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<dialog class="modal-dialog" id="domain-new">
+  <form class="modal-card" method="post" action="/admin/domains/save">
+    <div class="modal-header">
+      <div>
+        <h2>新增域名</h2>
+        <p>出口域名用于真实下载页，入口域名用于访问入口和白名单同步。</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭">×</button>
+    </div>
+    <div class="resource-form modal-form">
+      <label>
+        <span>域名</span>
+        <input name="domain" placeholder="dl.example.com" required>
+      </label>
+      <label>
+        <span>类型</span>
+        <select name="role">
+          <option value="exit">出口域名</option>
+          <option value="entry">入口域名</option>
+        </select>
+      </label>
+      <label class="span-2">
+        <span>备注</span>
+        <input name="note" placeholder="用途、渠道或来源">
+      </label>
+      <div class="switch-row">
+        <label class="switch-field">
+          <input type="checkbox" name="enabled" value="1" checked>
+          <span class="switch-ui"></span>
+          <strong>启用</strong>
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-modal-close>取消</button>
+      <button class="btn primary" type="submit">添加域名</button>
+    </div>
+  </form>
+</dialog>
+
+{% for item in domains %}
+<dialog class="modal-dialog" id="domain-{{ item.id }}">
+  <form class="modal-card" method="post" action="/admin/domains/{{ item.id }}/update">
+    <div class="modal-header">
+      <div>
+        <h2>编辑域名</h2>
+        <p>{{ item.domain }}</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭">×</button>
+    </div>
+    <div class="resource-form modal-form">
+      <label>
+        <span>域名</span>
+        <input name="domain" value="{{ item.domain }}" required>
+      </label>
+      <label>
+        <span>类型</span>
+        <select name="role">
+          <option value="exit" {% if item.role == "exit" %}selected{% endif %}>出口域名</option>
+          <option value="entry" {% if item.role == "entry" %}selected{% endif %}>入口域名</option>
+        </select>
+      </label>
+      <label class="span-2">
+        <span>备注</span>
+        <input name="note" value="{{ item.note }}">
+      </label>
+      <div class="switch-row">
+        <label class="switch-field">
+          <input type="checkbox" name="enabled" value="1" {% if item.enabled %}checked{% endif %}>
+          <span class="switch-ui"></span>
+          <strong>启用</strong>
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-modal-close>取消</button>
+      <button class="btn primary" type="submit">保存</button>
+    </div>
+  </form>
+</dialog>
+{% endfor %}
+{% endblock %}

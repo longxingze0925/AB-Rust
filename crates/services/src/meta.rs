@@ -65,6 +65,30 @@ pub struct MetaEventNameStat {
     pub failed: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct MetaProfileEvents {
+    pub profile_id: Uuid,
+    pub total: i64,
+    pub sent: i64,
+    pub failed: i64,
+    pub pending: i64,
+    pub skipped: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub total_pages: i64,
+    pub events: Vec<MetaEventRow>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MetaEventFilter {
+    pub include_archived: bool,
+    pub status: String,
+    pub event_name: String,
+    pub route: String,
+    pub page: i64,
+    pub page_size: i64,
+}
+
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct MetaConfig {
     pub route_id: Uuid,
@@ -136,6 +160,17 @@ pub struct MetaService {
     token_crypto: Option<TokenCrypto>,
 }
 
+pub(crate) fn encrypt_meta_token(token: &str, token_key: &str) -> anyhow::Result<String> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Ok(String::new());
+    }
+    let Some(crypto) = TokenCrypto::from_secret(token_key) else {
+        return Ok(token.to_string());
+    };
+    crypto.encrypt(token)
+}
+
 impl MetaService {
     pub fn new(pool: DbPool, token_key: impl Into<String>) -> Self {
         let token_crypto = TokenCrypto::from_secret(&token_key.into());
@@ -153,17 +188,18 @@ impl MetaService {
               r.id AS route_id,
               COALESCE(NULLIF(r.name, ''), r.entry_domain) AS route_name,
               r.entry_domain,
-              COALESCE(m.enabled, FALSE) AS enabled,
-              COALESCE(m.pixel_id, '') AS pixel_id,
-              COALESCE(NULLIF(m.capi_token, ''), '') <> '' AS capi_token_set,
-              COALESCE(m.test_event_code, '') AS test_event_code,
-              COALESCE(m.currency, 'USD') AS currency,
-              COALESCE(m.value, 0) AS value,
-              COALESCE(m.page_view_enabled, TRUE) AS page_view_enabled,
-              COALESCE(m.view_content_enabled, TRUE) AS view_content_enabled,
-              COALESCE(m.lead_enabled, TRUE) AS lead_enabled
+              COALESCE(p.enabled, m.enabled, FALSE) AS enabled,
+              COALESCE(p.pixel_id, m.pixel_id, '') AS pixel_id,
+              COALESCE(NULLIF(COALESCE(p.capi_token, m.capi_token, ''), ''), '') <> '' AS capi_token_set,
+              COALESCE(p.test_event_code, m.test_event_code, '') AS test_event_code,
+              COALESCE(p.currency, m.currency, 'USD') AS currency,
+              COALESCE(p.value, m.value, 0) AS value,
+              COALESCE(p.page_view_enabled, m.page_view_enabled, TRUE) AS page_view_enabled,
+              COALESCE(p.view_content_enabled, m.view_content_enabled, TRUE) AS view_content_enabled,
+              COALESCE(p.lead_enabled, m.lead_enabled, TRUE) AS lead_enabled
             FROM routes r
             LEFT JOIN route_meta_configs m ON m.route_id = r.id
+            LEFT JOIN meta_profiles p ON p.id = m.meta_profile_id
             ORDER BY r.updated_at DESC
             "#,
         )
@@ -220,7 +256,13 @@ impl MetaService {
         Ok(())
     }
 
-    pub async fn recent_events(&self, include_archived: bool) -> anyhow::Result<Vec<MetaEventRow>> {
+    pub async fn recent_events(
+        &self,
+        filter: MetaEventFilter,
+    ) -> anyhow::Result<Vec<MetaEventRow>> {
+        let status = filter.status.trim().to_string();
+        let event_name = filter.event_name.trim().to_string();
+        let route = filter.route.trim().to_string();
         let rows = sqlx::query_as::<_, MetaEventRow>(
             r#"
             SELECT
@@ -238,14 +280,124 @@ impl MetaService {
             FROM meta_event_queue q
             LEFT JOIN routes r ON r.id = q.route_id
             WHERE ($1 OR q.archived_at IS NULL)
+              AND ($2 = '' OR q.status = $2)
+              AND ($3 = '' OR q.event_name = $3)
+              AND (
+                $4 = ''
+                OR COALESCE(NULLIF(r.name, ''), r.entry_domain, '') ILIKE '%' || $4 || '%'
+              )
             ORDER BY q.created_at DESC
             LIMIT 80
             "#,
         )
-        .bind(include_archived)
+        .bind(filter.include_archived)
+        .bind(status)
+        .bind(event_name)
+        .bind(route)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
+    }
+
+    pub async fn profile_events(
+        &self,
+        profile_id: Uuid,
+        filter: MetaEventFilter,
+    ) -> anyhow::Result<MetaProfileEvents> {
+        let status = filter.status.trim().to_string();
+        let event_name = filter.event_name.trim().to_string();
+        let route = filter.route.trim().to_string();
+        let page_size = filter.page_size.clamp(20, 200);
+        let page = filter.page.max(1);
+        let offset = (page - 1) * page_size;
+
+        let (total, sent, failed, pending, skipped) =
+            sqlx::query_as::<_, (i64, i64, i64, i64, i64)>(
+                r#"
+            SELECT
+              COUNT(*)::BIGINT AS total,
+              COUNT(*) FILTER (WHERE q.status = 'sent')::BIGINT AS sent,
+              COUNT(*) FILTER (WHERE q.status = 'failed')::BIGINT AS failed,
+              COUNT(*) FILTER (WHERE q.status IN ('pending', 'processing'))::BIGINT AS pending,
+              COUNT(*) FILTER (WHERE q.status = 'skipped')::BIGINT AS skipped
+            FROM meta_event_queue q
+            JOIN route_meta_configs m ON m.route_id = q.route_id
+            LEFT JOIN routes r ON r.id = q.route_id
+            WHERE m.meta_profile_id = $1
+              AND ($2 OR q.archived_at IS NULL)
+              AND ($3 = '' OR q.status = $3)
+              AND ($4 = '' OR q.event_name = $4)
+              AND (
+                $5 = ''
+                OR COALESCE(NULLIF(r.name, ''), r.entry_domain, '') ILIKE '%' || $5 || '%'
+              )
+            "#,
+            )
+            .bind(profile_id)
+            .bind(filter.include_archived)
+            .bind(&status)
+            .bind(&event_name)
+            .bind(&route)
+            .fetch_one(&self.pool)
+            .await?;
+
+        let events = sqlx::query_as::<_, MetaEventRow>(
+            r#"
+            SELECT
+              q.id,
+              COALESCE(NULLIF(r.name, ''), r.entry_domain, '') AS route_name,
+              q.event_name,
+              q.event_id,
+              q.status,
+              q.attempts,
+              q.last_status,
+              q.last_response,
+              q.created_at,
+              q.updated_at,
+              q.archived_at IS NOT NULL AS archived
+            FROM meta_event_queue q
+            JOIN route_meta_configs m ON m.route_id = q.route_id
+            LEFT JOIN routes r ON r.id = q.route_id
+            WHERE m.meta_profile_id = $1
+              AND ($2 OR q.archived_at IS NULL)
+              AND ($3 = '' OR q.status = $3)
+              AND ($4 = '' OR q.event_name = $4)
+              AND (
+                $5 = ''
+                OR COALESCE(NULLIF(r.name, ''), r.entry_domain, '') ILIKE '%' || $5 || '%'
+              )
+            ORDER BY q.created_at DESC
+            LIMIT $6 OFFSET $7
+            "#,
+        )
+        .bind(profile_id)
+        .bind(filter.include_archived)
+        .bind(&status)
+        .bind(&event_name)
+        .bind(&route)
+        .bind(page_size)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let total_pages = if total == 0 {
+            1
+        } else {
+            (total + page_size - 1) / page_size
+        };
+
+        Ok(MetaProfileEvents {
+            profile_id,
+            total,
+            sent,
+            failed,
+            pending,
+            skipped,
+            page,
+            page_size,
+            total_pages,
+            events,
+        })
     }
 
     pub async fn event_stats(&self) -> anyhow::Result<MetaEventStats> {
@@ -327,22 +479,46 @@ impl MetaService {
         Ok(())
     }
 
-    pub async fn archive_finished(&self, older_than_days: i64) -> anyhow::Result<u64> {
+    pub async fn archive_finished(
+        &self,
+        older_than_days: i64,
+        profile_id: Option<Uuid>,
+    ) -> anyhow::Result<u64> {
         let older_than_days = older_than_days.clamp(1, 3650);
         let cutoff = Utc::now() - Duration::days(older_than_days);
-        let result = sqlx::query(
-            r#"
-            UPDATE meta_event_queue
-            SET archived_at = now(),
-                updated_at = now()
-            WHERE archived_at IS NULL
-              AND status IN ('sent', 'skipped')
-              AND updated_at < $1
-            "#,
-        )
-        .bind(cutoff)
-        .execute(&self.pool)
-        .await?;
+        let result = if let Some(profile_id) = profile_id {
+            sqlx::query(
+                r#"
+                UPDATE meta_event_queue q
+                SET archived_at = now(),
+                    updated_at = now()
+                FROM route_meta_configs m
+                WHERE m.route_id = q.route_id
+                  AND m.meta_profile_id = $2
+                  AND q.archived_at IS NULL
+                  AND q.status IN ('sent', 'skipped')
+                  AND q.updated_at < $1
+                "#,
+            )
+            .bind(cutoff)
+            .bind(profile_id)
+            .execute(&self.pool)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                UPDATE meta_event_queue
+                SET archived_at = now(),
+                    updated_at = now()
+                WHERE archived_at IS NULL
+                  AND status IN ('sent', 'skipped')
+                  AND updated_at < $1
+                "#,
+            )
+            .bind(cutoff)
+            .execute(&self.pool)
+            .await?
+        };
         Ok(result.rows_affected())
     }
 
@@ -440,6 +616,10 @@ impl MetaService {
         if !cfg.enabled || cfg.pixel_id.is_empty() || cfg.capi_token.is_empty() {
             self.mark_skipped(event.id, "Meta 未启用或缺少 Pixel/CAPI")
                 .await?;
+            return Ok(());
+        }
+        if event.event_name == "PageView" && !cfg.page_view_enabled {
+            self.mark_skipped(event.id, "PageView 未启用").await?;
             return Ok(());
         }
         if event.event_name == "ViewContent" && !cfg.view_content_enabled {
@@ -582,10 +762,19 @@ impl MetaService {
         let row = sqlx::query_as::<_, MetaConfig>(
             r#"
             SELECT
-              route_id, enabled, pixel_id, capi_token, test_event_code, currency, value,
-              page_view_enabled, view_content_enabled, lead_enabled
-            FROM route_meta_configs
-            WHERE route_id = $1
+              m.route_id,
+              COALESCE(p.enabled, m.enabled, FALSE) AS enabled,
+              COALESCE(p.pixel_id, m.pixel_id, '') AS pixel_id,
+              COALESCE(p.capi_token, m.capi_token, '') AS capi_token,
+              COALESCE(p.test_event_code, m.test_event_code, '') AS test_event_code,
+              COALESCE(p.currency, m.currency, 'USD') AS currency,
+              COALESCE(p.value, m.value, 0) AS value,
+              COALESCE(p.page_view_enabled, m.page_view_enabled, TRUE) AS page_view_enabled,
+              COALESCE(p.view_content_enabled, m.view_content_enabled, TRUE) AS view_content_enabled,
+              COALESCE(p.lead_enabled, m.lead_enabled, TRUE) AS lead_enabled
+            FROM route_meta_configs m
+            LEFT JOIN meta_profiles p ON p.id = m.meta_profile_id
+            WHERE m.route_id = $1
             LIMIT 1
             "#,
         )

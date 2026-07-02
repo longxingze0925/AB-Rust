@@ -19,19 +19,54 @@
 {% match result %}
 {% when Some with (data) %}
 <section class="panel padded">
-  <form class="toolbar-form" method="get" action="/admin/visits">
+  <form class="filter-panel" method="get" action="/admin/visits">
+    <label class="span-2">
+      <span>关键词</span>
+      <input name="q" value="{{ data.q }}" placeholder="线路、推广码、入口域名、出口域名、IP、指纹">
+    </label>
+    <label>
+      <span>页面结果</span>
+      <select name="page_variant">
+        <option value="" {% if data.page_variant == "" %}selected{% endif %}>全部</option>
+        <option value="real" {% if data.page_variant == "real" %}selected{% endif %}>真实</option>
+        <option value="fake" {% if data.page_variant == "fake" %}selected{% endif %}>假页</option>
+        <option value="probe" {% if data.page_variant == "probe" %}selected{% endif %}>探针</option>
+      </select>
+    </label>
+    <label>
+      <span>下载状态</span>
+      <select name="downloaded">
+        <option value="" {% if data.downloaded == "" %}selected{% endif %}>全部</option>
+        <option value="yes" {% if data.downloaded == "yes" %}selected{% endif %}>已下载</option>
+        <option value="no" {% if data.downloaded == "no" %}selected{% endif %}>未下载</option>
+      </select>
+    </label>
     <label>
       <span>推广码</span>
-      <input name="promo" value="{{ data.promo }}" placeholder="按推广码筛选">
+      <input name="promo" value="{{ data.promo }}" placeholder="精确筛选">
+    </label>
+    <label>
+      <span>IP</span>
+      <input name="ip" value="{{ data.ip }}" placeholder="输入完整或部分 IP">
+    </label>
+    <label>
+      <span>开始日期</span>
+      <input name="date_from" type="date" value="{{ data.date_from }}">
+    </label>
+    <label>
+      <span>结束日期</span>
+      <input name="date_to" type="date" value="{{ data.date_to }}">
     </label>
     <input type="hidden" name="size" value="{{ data.page_size }}">
-    <button class="btn primary" type="submit">筛选</button>
-    <a class="btn" href="/admin/visits">重置</a>
-    <span class="muted">共 {{ data.total }} 条</span>
+    <div class="filter-actions">
+      <button class="btn primary" type="submit">筛选</button>
+      <a class="btn" href="/admin/visits">重置</a>
+      <span class="muted">共 {{ data.total }} 条</span>
+    </div>
   </form>
 </section>
 
-<section class="panel table-wrap">
+<section class="panel table-wrap wide-table">
   <table>
     <thead>
       <tr>
@@ -101,20 +136,20 @@
 
 <div class="pager">
   {% if data.page > 1 %}
-    <a class="btn" href="/admin/visits?page={{ data.page - 1 }}&size={{ data.page_size }}&promo={{ data.promo }}">上一页</a>
+    <a class="btn" href="/admin/visits?page={{ data.page - 1 }}&{{ data.query_string }}">上一页</a>
   {% else %}
     <button class="btn" type="button" disabled>上一页</button>
   {% endif %}
   <span>{{ data.page }} / {{ data.pages }}</span>
   {% if data.page < data.pages %}
-    <a class="btn" href="/admin/visits?page={{ data.page + 1 }}&size={{ data.page_size }}&promo={{ data.promo }}">下一页</a>
+    <a class="btn" href="/admin/visits?page={{ data.page + 1 }}&{{ data.query_string }}">下一页</a>
   {% else %}
     <button class="btn" type="button" disabled>下一页</button>
   {% endif %}
 </div>
 {% when None %}
 <section class="panel padded">
-  <p class="muted">访问记录暂时无法加载。</p>
+  <div class="empty-state">访问记录暂时无法加载。</div>
 </section>
 {% endmatch %}
 {% endblock %}

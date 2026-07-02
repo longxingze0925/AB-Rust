@@ -6,7 +6,11 @@
 <header class="page-header">
   <div>
     <h1>分流策略</h1>
-    <p>按线路开启基础分流：黑名单 IP/CIDR 和明显爬虫 UA 会返回假页，其余继续真实跳转。</p>
+    <p>维护真假页判断规则，新增线路时选择使用。IP 黑名单是全局辅助规则。</p>
+  </div>
+  <div class="header-actions">
+    <button class="btn" type="button" data-modal-open="blacklist-manage">全局 IP 黑名单</button>
+    <button class="btn primary" type="button" data-modal-open="cloak-new">新增策略</button>
   </div>
 </header>
 
@@ -16,93 +20,382 @@
 {% when None %}
 {% endmatch %}
 
-<section class="panel table-wrap">
+<section class="panel table-wrap cloak-table">
+  <div class="panel-header">
+    <div>
+      <h2>策略列表</h2>
+      <p>线路只引用这里维护好的策略；黑名单命中会进入假页逻辑。</p>
+    </div>
+  </div>
   <table>
     <thead>
       <tr>
-        <th>线路</th>
-        <th>入口域名</th>
-        <th>启用</th>
-        <th>阈值</th>
-        <th>令牌小时</th>
-        <th>假页标题</th>
-        <th>假 APK</th>
+        <th>策略</th>
+        <th>状态</th>
+        <th>规则</th>
+        <th>风险阈值</th>
+        <th>令牌有效期</th>
+        <th>假页</th>
+        <th>绑定线路</th>
+        <th>更新时间</th>
         <th>操作</th>
       </tr>
     </thead>
     <tbody>
-      {% for route in routes %}
+      {% for item in policies %}
       <tr>
-        <td>{{ route.route_name }}</td>
-        <td><code>{{ route.entry_domain }}</code></td>
         <td>
-          <input form="cloak-{{ route.route_id }}" type="checkbox" name="enabled" value="1" {% if route.enabled %}checked{% endif %}>
+          <div class="cell-stack">
+            <strong>{{ item.name }}</strong>
+            <span class="table-subtitle">风险分达到阈值后进入假页</span>
+          </div>
         </td>
-        <td><input form="cloak-{{ route.route_id }}" class="table-input number" name="threshold" value="{{ route.threshold }}"></td>
-        <td><input form="cloak-{{ route.route_id }}" class="table-input number" name="token_hours" value="{{ route.token_hours }}"></td>
-        <td><input form="cloak-{{ route.route_id }}" class="table-input" name="decoy_title" value="{{ route.decoy_title }}"></td>
-        <td><input form="cloak-{{ route.route_id }}" class="table-input wide" name="decoy_apk_url" value="{{ route.decoy_apk_url }}"></td>
+        <td>{% if item.enabled %}<span class="badge success">启用</span>{% else %}<span class="badge muted">关闭</span>{% endif %}</td>
         <td>
-          <form id="cloak-{{ route.route_id }}" method="post" action="/admin/cloak/save">
-            <input type="hidden" name="route_id" value="{{ route.route_id }}">
-            <button class="btn small primary" type="submit">保存</button>
-          </form>
+          <div class="cell-stack">
+            <strong>{{ item.rule_summary }}</strong>
+            <span class="table-subtitle">PTR {{ item.ptr_timeout_ms }}ms / 缓存 {{ item.ptr_cache_hours }}h</span>
+          </div>
+        </td>
+        <td>{{ item.threshold }}</td>
+        <td>{{ item.token_hours }}h</td>
+        <td>
+          <div class="cell-stack">
+            <strong>{{ item.decoy_title }}</strong>
+            <span class="table-subtitle">素材：{% match item.decoy_image_name %}{% when Some with (name) %}{{ name }}{% when None %}不展示{% endmatch %}</span>
+            <span class="table-subtitle">APK：{% if item.decoy_apk_url != "" %}已设置{% else %}未设置{% endif %}</span>
+          </div>
+        </td>
+        <td>
+          <div class="cell-stack">
+            <strong>{{ item.bound_route_count }}</strong>
+            <span class="table-subtitle">{% if item.bound_route_names != "" %}{{ item.bound_route_names }}{% else %}未绑定线路{% endif %}</span>
+          </div>
+        </td>
+        <td>{{ item.updated_at }}</td>
+        <td>
+          <div class="actions">
+            <button class="btn small" type="button" data-modal-open="cloak-{{ item.id }}">编辑</button>
+            <form method="post" action="/admin/cloak/policies/{{ item.id }}/toggle" data-confirm="{% if item.bound_route_count > 0 %}这个分流策略已绑定 {{ item.bound_route_count }} 条线路：{{ item.bound_route_names }}。{% if item.enabled %}停用后，这些线路的分流会关闭，真实访问会直接放行。{% else %}启用后，这些线路会开始按该策略分真假页。{% endif %}确认继续？{% else %}确认{% if item.enabled %}停用{% else %}启用{% endif %}这个分流策略？{% endif %}">
+              <button class="btn small" type="submit">{% if item.enabled %}停用{% else %}启用{% endif %}</button>
+            </form>
+            <button class="btn small" type="button" data-modal-open="blacklist-manage">黑名单</button>
+            <form method="post" action="/admin/cloak/policies/{{ item.id }}/delete" data-confirm="确认删除这个分流策略？如果策略仍被线路引用，后台会阻止删除。">
+              <button class="btn small danger" type="submit">删除</button>
+            </form>
+          </div>
         </td>
       </tr>
       {% endfor %}
-      {% if routes.len() == 0 %}
+      {% if policies.len() == 0 %}
       <tr>
-        <td class="empty" colspan="8">暂无线路。</td>
+        <td class="empty" colspan="9">暂无分流策略。创建策略后，在线路管理里选择使用。</td>
       </tr>
       {% endif %}
     </tbody>
   </table>
 </section>
 
-<section class="panel padded">
-  <h2>IP 黑名单</h2>
-  <form class="toolbar-form" method="post" action="/admin/cloak/blacklist/add">
-    <label>
-      <span>IP / CIDR</span>
-      <input name="cidr" placeholder="1.2.3.4 或 1.2.3.0/24" required>
-    </label>
-    <label>
-      <span>备注</span>
-      <input name="note" placeholder="来源或原因">
-    </label>
-    <button class="btn primary" type="submit">添加</button>
+<dialog class="modal-dialog wide" id="cloak-new">
+  <form class="modal-card" method="post" action="/admin/cloak/policies/save" enctype="multipart/form-data">
+    <div class="modal-header">
+      <div>
+        <h2>新增策略</h2>
+        <p>配置风险阈值、令牌有效期和假页内容。</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭">×</button>
+    </div>
+    <div class="resource-form modal-form">
+      <label>
+        <span>名称</span>
+        <input name="name" placeholder="审核严格策略" required>
+      </label>
+      <label>
+        <span>风险阈值</span>
+        <input name="threshold" type="number" min="1" max="100" value="8" required>
+      </label>
+      <label>
+        <span>令牌小时</span>
+        <input name="token_hours" type="number" min="1" max="720" value="6" required>
+      </label>
+      <label>
+        <span>假页标题</span>
+        <input name="decoy_title" value="下载">
+      </label>
+      <label>
+        <span>选择已有假页素材</span>
+        <select name="decoy_image_asset_id">
+          <option value="">不展示图片</option>
+          {% for item in assets %}
+          <option value="{{ item.id }}">{{ item.original_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>上传新假页素材</span>
+        <input name="asset_file" type="file" accept="image/*">
+      </label>
+      <label class="span-2">
+        <span>假 APK</span>
+        <input name="decoy_apk_url" placeholder="可为空">
+      </label>
+      <div class="switch-row">
+        <label class="switch-field">
+          <input type="checkbox" name="enabled" value="1">
+          <span class="switch-ui"></span>
+          <strong>启用分流</strong>
+        </label>
+      </div>
+      <div class="span-2 rule-box">
+        <div class="rule-box-header">
+          <strong>基础规则</strong>
+          <span>保留当前能力边界，按需关闭。</span>
+        </div>
+        <div class="switch-grid">
+          <label class="switch-field">
+            <input type="checkbox" name="use_ip_blacklist" value="1" checked>
+            <span class="switch-ui"></span>
+            <strong>IP 黑名单</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="use_header_rules" value="1" checked>
+            <span class="switch-ui"></span>
+            <strong>请求头规则</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="require_sec_fetch_mode" value="1" checked>
+            <span class="switch-ui"></span>
+            <strong>缺少 Sec-Fetch 拦截</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="use_js_probe" value="1" checked>
+            <span class="switch-ui"></span>
+            <strong>JS 探针</strong>
+          </label>
+        </div>
+      </div>
+      <div class="span-2 rule-box">
+        <div class="rule-box-header">
+          <strong>ASN / PTR 增强</strong>
+          <span>ASN 默认开启，PTR 默认关闭，用于识别机房、云厂商和正规爬虫。</span>
+        </div>
+        <div class="switch-grid">
+          <label class="switch-field">
+            <input type="checkbox" name="use_asn" value="1" checked>
+            <span class="switch-ui"></span>
+            <strong>ASN 检测</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="block_datacenter_asn" value="1" checked>
+            <span class="switch-ui"></span>
+            <strong>拦截机房 ASN</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="use_ptr" value="1">
+            <span class="switch-ui"></span>
+            <strong>PTR 反查</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="block_datacenter_ptr" value="1" checked>
+            <span class="switch-ui"></span>
+            <strong>拦截机房 PTR</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="block_verified_bot_ptr" value="1" checked>
+            <span class="switch-ui"></span>
+            <strong>拦截正规爬虫 PTR</strong>
+          </label>
+        </div>
+      </div>
+      <label>
+        <span>PTR 超时 ms</span>
+        <input name="ptr_timeout_ms" type="number" min="100" max="5000" value="800">
+      </label>
+      <label>
+        <span>PTR 缓存小时</span>
+        <input name="ptr_cache_hours" type="number" min="1" max="720" value="6">
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-modal-close>取消</button>
+      <button class="btn primary" type="submit">添加策略</button>
+    </div>
   </form>
-</section>
+</dialog>
 
-<section class="panel table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>CIDR</th>
-        <th>备注</th>
-        <th>创建时间</th>
-        <th>操作</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in blacklist %}
-      <tr>
-        <td><code>{{ item.cidr }}</code></td>
-        <td>{{ item.note }}</td>
-        <td>{{ item.created_at }}</td>
-        <td>
+{% for item in policies %}
+<dialog class="modal-dialog wide" id="cloak-{{ item.id }}">
+  <form class="modal-card" method="post" action="/admin/cloak/policies/{{ item.id }}/update" enctype="multipart/form-data">
+    <div class="modal-header">
+      <div>
+        <h2>编辑策略</h2>
+        <p>{{ item.name }}</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭">×</button>
+    </div>
+    <div class="resource-form modal-form">
+      <label>
+        <span>名称</span>
+        <input name="name" value="{{ item.name }}" required>
+      </label>
+      <label>
+        <span>风险阈值</span>
+        <input name="threshold" type="number" min="1" max="100" value="{{ item.threshold }}" required>
+      </label>
+      <label>
+        <span>令牌小时</span>
+        <input name="token_hours" type="number" min="1" max="720" value="{{ item.token_hours }}" required>
+      </label>
+      <label>
+        <span>假页标题</span>
+        <input name="decoy_title" value="{{ item.decoy_title }}">
+      </label>
+      <label>
+        <span>选择已有假页素材</span>
+        <select name="decoy_image_asset_id">
+          <option value="">不展示图片</option>
+          {% for asset in assets %}
+          <option value="{{ asset.id }}" {% if item.decoy_image_asset_id_value == asset.id.to_string() %}selected{% endif %}>{{ asset.original_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>上传新假页素材</span>
+        <input name="asset_file" type="file" accept="image/*">
+      </label>
+      <label class="span-2">
+        <span>假 APK</span>
+        <input name="decoy_apk_url" value="{{ item.decoy_apk_url }}">
+      </label>
+      <div class="switch-row">
+        <label class="switch-field">
+          <input type="checkbox" name="enabled" value="1" {% if item.enabled %}checked{% endif %}>
+          <span class="switch-ui"></span>
+          <strong>启用分流</strong>
+        </label>
+      </div>
+      <div class="span-2 rule-box">
+        <div class="rule-box-header">
+          <strong>基础规则</strong>
+          <span>{{ item.rule_summary }}</span>
+        </div>
+        <div class="switch-grid">
+          <label class="switch-field">
+            <input type="checkbox" name="use_ip_blacklist" value="1" {% if item.use_ip_blacklist %}checked{% endif %}>
+            <span class="switch-ui"></span>
+            <strong>IP 黑名单</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="use_header_rules" value="1" {% if item.use_header_rules %}checked{% endif %}>
+            <span class="switch-ui"></span>
+            <strong>请求头规则</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="require_sec_fetch_mode" value="1" {% if item.require_sec_fetch_mode %}checked{% endif %}>
+            <span class="switch-ui"></span>
+            <strong>缺少 Sec-Fetch 拦截</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="use_js_probe" value="1" {% if item.use_js_probe %}checked{% endif %}>
+            <span class="switch-ui"></span>
+            <strong>JS 探针</strong>
+          </label>
+        </div>
+      </div>
+      <div class="span-2 rule-box">
+        <div class="rule-box-header">
+          <strong>ASN / PTR 增强</strong>
+          <span>PTR 失败会按缓存策略记录，默认放行。</span>
+        </div>
+        <div class="switch-grid">
+          <label class="switch-field">
+            <input type="checkbox" name="use_asn" value="1" {% if item.use_asn %}checked{% endif %}>
+            <span class="switch-ui"></span>
+            <strong>ASN 检测</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="block_datacenter_asn" value="1" {% if item.block_datacenter_asn %}checked{% endif %}>
+            <span class="switch-ui"></span>
+            <strong>拦截机房 ASN</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="use_ptr" value="1" {% if item.use_ptr %}checked{% endif %}>
+            <span class="switch-ui"></span>
+            <strong>PTR 反查</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="block_datacenter_ptr" value="1" {% if item.block_datacenter_ptr %}checked{% endif %}>
+            <span class="switch-ui"></span>
+            <strong>拦截机房 PTR</strong>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" name="block_verified_bot_ptr" value="1" {% if item.block_verified_bot_ptr %}checked{% endif %}>
+            <span class="switch-ui"></span>
+            <strong>拦截正规爬虫 PTR</strong>
+          </label>
+        </div>
+      </div>
+      <label>
+        <span>PTR 超时 ms</span>
+        <input name="ptr_timeout_ms" type="number" min="100" max="5000" value="{{ item.ptr_timeout_ms }}">
+      </label>
+      <label>
+        <span>PTR 缓存小时</span>
+        <input name="ptr_cache_hours" type="number" min="1" max="720" value="{{ item.ptr_cache_hours }}">
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-modal-close>取消</button>
+      <button class="btn primary" type="submit">保存</button>
+    </div>
+  </form>
+</dialog>
+{% endfor %}
+
+<dialog class="modal-dialog wide" id="blacklist-manage">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div>
+        <h2>全局 IP 黑名单</h2>
+        <p>命中黑名单的访问会进入假页逻辑，影响所有启用分流的线路。</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭">×</button>
+    </div>
+    <div class="blacklist-modal-body">
+      <form class="resource-form single" method="post" action="/admin/cloak/blacklist/add">
+        <label>
+          <span>IP / CIDR</span>
+          <input name="cidr" placeholder="1.2.3.4 或 1.2.3.0/24" required>
+        </label>
+        <label>
+          <span>备注</span>
+          <input name="note" placeholder="来源或原因">
+        </label>
+        <div class="form-actions">
+          <button class="btn primary" type="submit">添加黑名单</button>
+        </div>
+      </form>
+
+      <div class="mini-list">
+        {% for item in blacklist %}
+        <div class="mini-row">
+          <div>
+            <strong><code>{{ item.cidr }}</code></strong>
+            <span>{% if item.note != "" %}{{ item.note }} · {% endif %}{{ item.created_at }}</span>
+          </div>
           <form method="post" action="/admin/cloak/blacklist/{{ item.id }}/delete" data-confirm="确认删除这条 IP 黑名单规则？">
             <button class="btn small danger" type="submit">删除</button>
           </form>
-        </td>
-      </tr>
-      {% endfor %}
-      {% if blacklist.len() == 0 %}
-      <tr>
-        <td class="empty" colspan="4">暂无黑名单。</td>
-      </tr>
-      {% endif %}
-    </tbody>
-  </table>
-</section>
+        </div>
+        {% endfor %}
+        {% if blacklist.len() == 0 %}
+        <div class="empty-state compact">暂无黑名单。</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-modal-close>关闭</button>
+    </div>
+  </div>
+</dialog>
 {% endblock %}

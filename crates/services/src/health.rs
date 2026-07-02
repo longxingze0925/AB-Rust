@@ -11,7 +11,7 @@ impl HealthService {
     }
 
     pub async fn database_ok(&self) -> bool {
-        sqlx::query_scalar::<_, i64>("SELECT 1")
+        sqlx::query_scalar::<_, i64>("SELECT 1::BIGINT")
             .fetch_one(&self.pool)
             .await
             .is_ok()

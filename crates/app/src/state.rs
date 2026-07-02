@@ -1,13 +1,14 @@
 use ab_db::DbPool;
 use ab_services::{
     AssetsService, AuthService, CloakService, GeoIpService, HealthService, MetaService,
-    PromosService, RoutesService, StatsService, TemplatesService, VisitsService,
+    PromosService, ResourcesService, RoutesService, StatsService, TemplatesService, VisitsService,
 };
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use uuid::Uuid;
 
 use crate::settings::Settings;
 
@@ -26,6 +27,7 @@ pub struct AppState {
     pub geo: GeoIpService,
     pub meta: MetaService,
     pub promos: PromosService,
+    pub resources: ResourcesService,
     pub routes: RoutesService,
     pub stats: StatsService,
     pub templates: TemplatesService,
@@ -39,10 +41,11 @@ impl AppState {
             assets: AssetsService::new(pool.clone(), settings.data_dir.clone()),
             auth: AuthService::new(pool.clone()),
             health: HealthService::new(pool.clone()),
-            cloak: CloakService::new(pool.clone()),
-            geo: GeoIpService::new(pool.clone()),
+            cloak: CloakService::new(pool.clone(), settings.data_dir.clone()),
+            geo: GeoIpService::new(pool.clone(), settings.data_dir.clone()),
             meta: MetaService::new(pool.clone(), settings.meta_token_key.clone()),
             promos: PromosService::new(pool.clone()),
+            resources: ResourcesService::new(pool.clone(), settings.meta_token_key.clone()),
             routes: RoutesService::new(pool.clone()),
             security: SecurityState::new(),
             stats: StatsService::new(pool.clone()),
@@ -57,6 +60,7 @@ impl AppState {
 pub struct SecurityState {
     login_failures: Arc<Mutex<HashMap<String, LoginFailureState>>>,
     public_event_hits: Arc<Mutex<HashMap<String, Instant>>>,
+    public_visits: Arc<Mutex<HashMap<String, (Uuid, Instant)>>>,
 }
 
 #[derive(Clone)]
@@ -142,6 +146,27 @@ impl SecurityState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         hits.remove(key);
+    }
+
+    pub fn remember_public_visit(&self, key: &str, visit_id: Uuid, ttl: Duration) {
+        let expires_at = Instant::now() + ttl;
+        let mut visits = self
+            .public_visits
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        visits.insert(key.to_string(), (visit_id, expires_at));
+    }
+
+    pub fn public_visit(&self, key: &str) -> Option<Uuid> {
+        let now = Instant::now();
+        let mut visits = self
+            .public_visits
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        visits.retain(|_, (_, expires_at)| *expires_at > now);
+        visits
+            .get(key)
+            .and_then(|(visit_id, expires_at)| (*expires_at > now).then_some(*visit_id))
     }
 }
 

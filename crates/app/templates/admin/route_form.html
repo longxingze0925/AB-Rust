@@ -6,7 +6,7 @@
 <header class="page-header">
   <div>
     <h1>{{ mode }}</h1>
-    <p>配置入口、真实目标和落地页模式；分流和 Meta 后续在独立模块维护。</p>
+    <p>线路只负责装配：选择入口、出口、落地页、分流策略和 Meta 配置。</p>
   </div>
   <a class="btn" href="/admin/routes">返回列表</a>
 </header>
@@ -17,87 +17,232 @@
 {% when None %}
 {% endmatch %}
 
-<form class="panel padded form-grid" method="post" action="{{ action }}">
-  <label>
-    <span>线路名称</span>
-    <input name="name" value="{{ route.name }}" placeholder="例如：主线路">
-  </label>
+<form class="route-builder" method="post" action="{{ action }}">
+  <section class="panel padded builder-section">
+    <div class="section-title">
+      <span class="step-badge">1</span>
+      <div>
+        <h2>基础信息</h2>
+        <p>入口域名是用户访问的域名，线路名称用于后台识别。</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      <label>
+        <span>线路名称</span>
+        <input name="name" value="{{ route.name }}" placeholder="例如：主线路">
+      </label>
+      <label>
+        <span>入口域名</span>
+        <select name="entry_domain" required {% if entry_domains.len() == 0 %}disabled{% endif %}>
+          <option value="" disabled {% if route.entry_domain == "" %}selected{% endif %}>请选择入口域名</option>
+          {% for domain in entry_domains %}
+          <option value="{{ domain.domain }}" {% if route.entry_domain == domain.domain %}selected{% endif %}>{{ domain.domain }}{% if domain.enabled == false %} · 已停用{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if entry_domains.len() == 0 %}
+      <div class="span-2 empty-state compact route-empty-state">
+        <span>还没有可用入口域名，请先到域名库添加入口域名。</span>
+        <a class="btn small" href="/admin/domains">去添加域名</a>
+      </div>
+      {% endif %}
+    </div>
+  </section>
 
-  <label>
-    <span>入口域名</span>
-    <input name="entry_domain" value="{{ route.entry_domain }}" placeholder="go.example.com" required>
-  </label>
+  <section class="panel padded builder-section">
+    <div class="section-title">
+      <span class="step-badge">2</span>
+      <div>
+        <h2>目标出口</h2>
+        <p>内部出口从域名库选择；外部目标直接填写完整 URL。</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      <label>
+        <span>真实目标</span>
+        <select name="target_type" data-toggle-target="target">
+          <option value="internal" {% if route.target_type == "internal" %}selected{% endif %}>内部出口域名</option>
+          <option value="external" {% if route.target_type == "external" %}selected{% endif %}>外部网站 URL</option>
+        </select>
+      </label>
+      <label data-mode-field="target:internal">
+        <span>出口域名</span>
+        <select name="exit_domain_id" {% if exit_domains.len() == 0 %}disabled{% endif %}>
+          <option value="" disabled {% if route.exit_domain_id_value == "" %}selected{% endif %}>请选择出口域名</option>
+          {% for domain in exit_domains %}
+          <option value="{{ domain.id }}" {% if route.exit_domain_id_value == domain.id.to_string() %}selected{% endif %}>{{ domain.domain }}{% if domain.enabled == false %} · 已停用{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <input type="hidden" name="exit_domain" value="{{ route.exit_domain }}">
+      {% if exit_domains.len() == 0 %}
+      <div data-mode-field="target:internal" class="span-2 empty-state compact route-empty-state">
+        <span>还没有可用出口域名，请先到域名库添加出口域名。</span>
+        <a class="btn small" href="/admin/domains">去添加域名</a>
+      </div>
+      {% endif %}
+      <label data-mode-field="target:external" class="span-2">
+        <span>外部网站 URL</span>
+        <input name="external_url" value="{{ route.external_url }}" placeholder="https://example.com/path">
+      </label>
+    </div>
+  </section>
 
-  <label>
-    <span>真实目标</span>
-    <select name="target_type">
-      <option value="internal" {% if route.target_type == "internal" %}selected{% endif %}>内部出口域名</option>
-      <option value="external" {% if route.target_type == "external" %}selected{% endif %}>外部网站 URL</option>
-    </select>
-  </label>
+  <section class="panel padded builder-section">
+    <div class="section-title">
+      <span class="step-badge">3</span>
+      <div>
+        <h2>落地页</h2>
+        <p>从落地页页面选择已准备好的配置，线路只保存一份发布快照。</p>
+      </div>
+    </div>
+    <div class="form-grid landing-selector">
+      <input type="hidden" name="landing_mode" value="{{ route.landing_mode }}">
+      <input type="hidden" name="template_id" value="{{ route.template_id_value }}">
+      <input type="hidden" name="image_asset_id" value="{{ route.image_asset_id_value }}">
+      <input type="hidden" name="title" value="{{ route.title }}">
+      <input type="hidden" name="apk_url" value="{{ route.apk_url }}">
+      {% if route.auto_download %}
+      <input type="hidden" name="auto_download" value="1">
+      {% endif %}
+      <label class="span-2 landing-select-field">
+        <span>落地页</span>
+        <select name="landing_profile_id" data-preview-select="landing-profile" required {% if landing_profiles.len() == 0 %}disabled{% endif %}>
+          <option value="" disabled {% if route.landing_profile_id_value == "" %}selected{% endif %}>请选择落地页</option>
+          {% for profile in landing_profiles %}
+          <option value="{{ profile.id }}" {% if route.landing_profile_id_value == profile.id.to_string() %}selected{% endif %}>{{ profile.name }} · {% if profile.landing_mode == "template" %}自定义模板{% else %}默认下载页{% endif %} · {{ profile.title }}{% if profile.enabled == false %} · 已停用{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
 
-  <label>
-    <span>出口域名</span>
-    <input name="exit_domain" value="{{ route.exit_domain }}" placeholder="dl.example.com">
-  </label>
+      <div class="span-2 landing-profile-stage">
+        {% if landing_profiles.len() == 0 %}
+        <div class="empty-state compact route-empty-state">
+          <span>还没有可用落地页，请先新增落地页。</span>
+          <a class="btn small" href="/admin/landing">去新增落地页</a>
+        </div>
+        {% endif %}
+        {% if landing_profiles.len() > 0 %}
+        <div class="landing-profile-placeholder" data-preview-placeholder="landing-profile" {% if route.landing_profile_id_value != "" %}hidden{% endif %}>
+          选择落地页后，这里会显示模板、素材、标题、APK 和自动下载配置。
+        </div>
+        {% endif %}
+        {% for profile in landing_profiles %}
+        <article class="landing-profile-preview" data-preview-option="landing-profile:{{ profile.id }}" {% if route.landing_profile_id_value != profile.id.to_string() %}hidden{% endif %}>
+          <div class="landing-profile-head">
+            <div>
+              <strong>{{ profile.name }}</strong>
+              <span>{% if profile.landing_mode == "template" %}自定义模板{% else %}默认下载页{% endif %}</span>
+            </div>
+            {% if profile.enabled == false %}
+            <span class="badge muted">已停用</span>
+            {% endif %}
+            {% if profile.auto_download %}
+            <span class="badge success">自动下载</span>
+            {% else %}
+            <span class="badge muted">手动下载</span>
+            {% endif %}
+          </div>
+          <div class="landing-profile-grid">
+            <div>
+              <span>页面资源</span>
+              <strong>
+                {% if profile.landing_mode == "template" %}
+                  {% match profile.template_name %}{% when Some with (name) %}{{ name }}{% when None %}未选择模板{% endmatch %}
+                {% else %}
+                  {% match profile.image_name %}{% when Some with (name) %}{{ name }}{% when None %}不展示图片{% endmatch %}
+                {% endif %}
+              </strong>
+            </div>
+            <div>
+              <span>标题</span>
+              <strong>{{ profile.title }}</strong>
+            </div>
+            <div class="span-2">
+              <span>APK 下载直链</span>
+              {% if profile.apk_url != "" %}
+              <code>{{ profile.apk_url }}</code>
+              {% else %}
+              <strong>未配置</strong>
+              {% endif %}
+            </div>
+          </div>
+        </article>
+        {% endfor %}
 
-  <label class="span-2">
-    <span>外部网站 URL</span>
-    <input name="external_url" value="{{ route.external_url }}" placeholder="https://example.com/path">
-  </label>
+        {% if mode == "编辑线路" && route.landing_profile_id_value == "" %}
+        <div class="legacy-config">
+          <strong>历史兼容配置</strong>
+          <span>当前线路还没有绑定落地页。旧字段会作为只读快照保留，保存前建议选择上方落地页完成迁移。</span>
+          <div class="legacy-grid">
+            <div>
+              <span>模式</span>
+              <strong>{% if route.landing_mode == "template" %}自定义模板{% else %}默认下载页{% endif %}</strong>
+            </div>
+            <div>
+              <span>标题</span>
+              <strong>{{ route.title }}</strong>
+            </div>
+            <div class="span-2">
+              <span>APK 下载直链</span>
+              {% if route.apk_url != "" %}<code>{{ route.apk_url }}</code>{% else %}<strong>未配置</strong>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
 
-  <label>
-    <span>落地页标题</span>
-    <input name="title" value="{{ route.title }}" required>
-  </label>
+  <section class="panel padded builder-section">
+    <div class="section-title">
+      <span class="step-badge">4</span>
+      <div>
+        <h2>策略与事件</h2>
+        <p>选择已准备好的分流策略和 Meta 配置；不绑定代表关闭。</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      <label>
+        <span>分流策略</span>
+        <select name="cloak_policy_id">
+          <option value="">不绑定分流策略</option>
+          {% for policy in cloak_policies %}
+          <option value="{{ policy.id }}" {% if route.cloak_policy_id_value == policy.id.to_string() %}selected{% endif %}>{{ policy.name }}{% if policy.enabled %} · 启用{% else %} · 已停用{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Meta 配置</span>
+        <select name="meta_profile_id">
+          <option value="">不绑定 Meta 配置</option>
+          {% for profile in meta_profiles %}
+          <option value="{{ profile.id }}" {% if route.meta_profile_id_value == profile.id.to_string() %}selected{% endif %}>{{ profile.name }}{% if profile.enabled %} · 启用{% else %} · 已停用{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+  </section>
 
-  <label>
-    <span>落地页模式</span>
-    <select name="landing_mode">
-      <option value="default" {% if route.landing_mode == "default" %}selected{% endif %}>默认下载页</option>
-      <option value="template" {% if route.landing_mode == "template" %}selected{% endif %}>自定义模板</option>
-    </select>
-  </label>
-
-  <label>
-    <span>模板</span>
-    <select name="template_id">
-      <option value="">不使用模板</option>
-      {% for item in templates %}
-      <option value="{{ item.id }}" {% if route.template_id_value == item.id.to_string() %}selected{% endif %}>{{ item.name }}</option>
-      {% endfor %}
-    </select>
-  </label>
-
-  <label>
-    <span>默认页展示图</span>
-    <select name="image_asset_id">
-      <option value="">不展示图片</option>
-      {% for item in assets %}
-      <option value="{{ item.id }}" {% if route.image_asset_id_value == item.id.to_string() %}selected{% endif %}>{{ item.original_name }}</option>
-      {% endfor %}
-    </select>
-  </label>
-
-  <label class="span-2">
-    <span>APK 下载直链</span>
-    <input name="apk_url" value="{{ route.apk_url }}" placeholder="https://cdn.example.com/app.apk">
-  </label>
-
-  <div class="check-row">
-    <label>
-      <input type="checkbox" name="auto_download" value="1" {% if route.auto_download %}checked{% endif %}>
-      <span>进入出口页后自动尝试下载</span>
-    </label>
-    <label>
-      <input type="checkbox" name="enabled" value="1" {% if route.enabled %}checked{% endif %}>
-      <span>启用线路</span>
-    </label>
-  </div>
-
-  <div class="form-actions">
-    <button class="btn primary" type="submit">保存</button>
-    <a class="btn" href="/admin/routes">取消</a>
-  </div>
+  <section class="panel padded builder-section">
+    <div class="section-title">
+      <span class="step-badge">5</span>
+      <div>
+        <h2>发布状态</h2>
+        <p>启用后入口域名会开始处理访问。</p>
+      </div>
+    </div>
+    <div class="switch-row">
+      <label class="switch-field">
+        <input type="checkbox" name="enabled" value="1" {% if route.enabled %}checked{% endif %}>
+        <span class="switch-ui"></span>
+        <strong>启用线路</strong>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" type="submit" {% if landing_profiles.len() == 0 || entry_domains.len() == 0 %}disabled{% endif %}>保存线路</button>
+      <a class="btn" href="/admin/routes">取消</a>
+    </div>
+  </section>
 </form>
 {% endblock %}
