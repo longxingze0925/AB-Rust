@@ -9,7 +9,7 @@ use ab_services::{
 use askama::Template;
 use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
     Form, Json, Router,
@@ -1316,7 +1316,7 @@ async fn admin_route_create(
 
     let view = RouteFormView::from(form.clone());
     match state.routes.create(form.into()).await {
-        Ok(_) => Redirect::to("/admin/routes").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/routes"),
         Err(err) => {
             let options = route_form_options(&state, &view).await;
             render_route_form(
@@ -1380,7 +1380,7 @@ async fn admin_route_update(
 
     let view = RouteFormView::from(form.clone());
     match state.routes.update(id, form.into()).await {
-        Ok(_) => Redirect::to("/admin/routes").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/routes"),
         Err(err) => {
             let options = route_form_options(&state, &view).await;
             render_route_form(
@@ -1404,8 +1404,9 @@ async fn admin_route_toggle(
     if !require_admin_form(&state, &cookies, &form.csrf_token).await {
         return Redirect::to("/admin/login").into_response();
     }
-    if let Err(err) = state.routes.toggle(id).await {
-        tracing::error!(error = %err, route_id = %id, "failed to toggle route");
+    match state.routes.toggle(id).await {
+        Ok(_) => state.clear_public_config_cache(),
+        Err(err) => tracing::error!(error = %err, route_id = %id, "failed to toggle route"),
     }
     Redirect::to("/admin/routes").into_response()
 }
@@ -1419,8 +1420,9 @@ async fn admin_route_delete(
     if !require_admin_form(&state, &cookies, &form.csrf_token).await {
         return Redirect::to("/admin/login").into_response();
     }
-    if let Err(err) = state.routes.delete(id).await {
-        tracing::error!(error = %err, route_id = %id, "failed to delete route");
+    match state.routes.delete(id).await {
+        Ok(_) => state.clear_public_config_cache(),
+        Err(err) => tracing::error!(error = %err, route_id = %id, "failed to delete route"),
     }
     Redirect::to("/admin/routes").into_response()
 }
@@ -1468,7 +1470,7 @@ async fn admin_promo_create(
         return Redirect::to("/admin/login").into_response();
     }
     match state.promos.create(form.into()).await {
-        Ok(_) => Redirect::to("/admin/promos").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/promos"),
         Err(err) => render_promos(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1494,7 +1496,7 @@ async fn admin_promo_update(
         return Redirect::to("/admin/login").into_response();
     }
     match state.promos.update(id, form.into()).await {
-        Ok(_) => Redirect::to("/admin/promos").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/promos"),
         Err(err) => render_promos(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1508,8 +1510,9 @@ async fn admin_promo_toggle(
     if !require_admin_form(&state, &cookies, &form.csrf_token).await {
         return Redirect::to("/admin/login").into_response();
     }
-    if let Err(err) = state.promos.toggle(id).await {
-        tracing::error!(error = %err, promo_id = %id, "failed to toggle promo");
+    match state.promos.toggle(id).await {
+        Ok(_) => state.clear_public_config_cache(),
+        Err(err) => tracing::error!(error = %err, promo_id = %id, "failed to toggle promo"),
     }
     Redirect::to("/admin/promos").into_response()
 }
@@ -1523,8 +1526,9 @@ async fn admin_promo_delete(
     if !require_admin_form(&state, &cookies, &form.csrf_token).await {
         return Redirect::to("/admin/login").into_response();
     }
-    if let Err(err) = state.promos.delete(id).await {
-        tracing::error!(error = %err, promo_id = %id, "failed to delete promo");
+    match state.promos.delete(id).await {
+        Ok(_) => state.clear_public_config_cache(),
+        Err(err) => tracing::error!(error = %err, promo_id = %id, "failed to delete promo"),
     }
     Redirect::to("/admin/promos").into_response()
 }
@@ -1626,7 +1630,7 @@ async fn admin_template_upload(
         .upload_zip(name, file_name, file_bytes)
         .await
     {
-        Ok(_) => Redirect::to("/admin/landing").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/landing"),
         Err(err) => render_landing(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1642,7 +1646,7 @@ async fn admin_template_delete(
     }
 
     match state.templates.delete(id).await {
-        Ok(_) => Redirect::to("/admin/landing").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/landing"),
         Err(err) => render_landing(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1685,7 +1689,7 @@ async fn admin_asset_upload(
     }
 
     match state.assets.upload(file_name, file_bytes).await {
-        Ok(_) => Redirect::to("/admin/landing").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/landing"),
         Err(err) => render_landing(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1701,7 +1705,7 @@ async fn admin_asset_delete(
     }
 
     match state.assets.delete(id).await {
-        Ok(_) => Redirect::to("/admin/landing").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/landing"),
         Err(err) => render_landing(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1733,7 +1737,7 @@ async fn admin_resource_domain_save(
         return Redirect::to("/admin/login").into_response();
     }
     match state.resources.upsert_domain(form.into()).await {
-        Ok(_) => Redirect::to("/admin/domains").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/domains"),
         Err(err) => render_domains(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1748,7 +1752,7 @@ async fn admin_resource_domain_update(
         return Redirect::to("/admin/login").into_response();
     }
     match state.resources.update_domain(id, form.into()).await {
-        Ok(_) => Redirect::to("/admin/domains").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/domains"),
         Err(err) => render_domains(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1763,7 +1767,7 @@ async fn admin_resource_domain_toggle(
         return Redirect::to("/admin/login").into_response();
     }
     match state.resources.toggle_domain(id).await {
-        Ok(_) => Redirect::to("/admin/domains").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/domains"),
         Err(err) => render_domains(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1778,7 +1782,7 @@ async fn admin_resource_domain_delete(
         return Redirect::to("/admin/login").into_response();
     }
     match state.resources.delete_domain(id).await {
-        Ok(_) => Redirect::to("/admin/domains").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/domains"),
         Err(err) => render_domains(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1806,7 +1810,7 @@ async fn admin_landing_profile_save(
         .save_landing_profile(None, form.into_input())
         .await
     {
-        Ok(_) => Redirect::to("/admin/landing").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/landing"),
         Err(err) => render_landing(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1835,7 +1839,7 @@ async fn admin_landing_profile_update(
         .save_landing_profile(Some(id), form.into_input())
         .await
     {
-        Ok(_) => Redirect::to("/admin/landing").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/landing"),
         Err(err) => render_landing(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1850,7 +1854,7 @@ async fn admin_resource_landing_toggle(
         return Redirect::to("/admin/login").into_response();
     }
     match state.resources.toggle_landing_profile(id).await {
-        Ok(_) => Redirect::to("/admin/landing").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/landing"),
         Err(err) => render_landing(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1865,7 +1869,7 @@ async fn admin_resource_landing_delete(
         return Redirect::to("/admin/login").into_response();
     }
     match state.resources.delete_landing_profile(id).await {
-        Ok(_) => Redirect::to("/admin/landing").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/landing"),
         Err(err) => render_landing(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1893,7 +1897,7 @@ async fn admin_cloak_policy_save(
         .save_cloak_policy(None, form.into_input())
         .await
     {
-        Ok(_) => Redirect::to("/admin/cloak").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/cloak"),
         Err(err) => render_cloak(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1922,7 +1926,7 @@ async fn admin_cloak_policy_update(
         .save_cloak_policy(Some(id), form.into_input())
         .await
     {
-        Ok(_) => Redirect::to("/admin/cloak").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/cloak"),
         Err(err) => render_cloak(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1937,7 +1941,7 @@ async fn admin_resource_cloak_policy_toggle(
         return Redirect::to("/admin/login").into_response();
     }
     match state.resources.toggle_cloak_policy(id).await {
-        Ok(_) => Redirect::to("/admin/cloak").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/cloak"),
         Err(err) => render_cloak(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1952,7 +1956,7 @@ async fn admin_resource_cloak_policy_delete(
         return Redirect::to("/admin/login").into_response();
     }
     match state.resources.delete_cloak_policy(id).await {
-        Ok(_) => Redirect::to("/admin/cloak").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/cloak"),
         Err(err) => render_cloak(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -1972,7 +1976,7 @@ async fn admin_resource_meta_profile_save(
         }
     };
     match state.resources.save_meta_profile(None, input).await {
-        Ok(_) => Redirect::to("/admin/meta").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/meta"),
         Err(err) => render_meta_default(&state, &cookies, None, Some(err.to_string())).await,
     }
 }
@@ -1993,7 +1997,7 @@ async fn admin_resource_meta_profile_update(
         }
     };
     match state.resources.save_meta_profile(Some(id), input).await {
-        Ok(_) => Redirect::to("/admin/meta").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/meta"),
         Err(err) => render_meta_default(&state, &cookies, None, Some(err.to_string())).await,
     }
 }
@@ -2008,7 +2012,7 @@ async fn admin_resource_meta_profile_toggle(
         return Redirect::to("/admin/login").into_response();
     }
     match state.resources.toggle_meta_profile(id).await {
-        Ok(_) => Redirect::to("/admin/meta").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/meta"),
         Err(err) => render_meta_default(&state, &cookies, None, Some(err.to_string())).await,
     }
 }
@@ -2023,7 +2027,7 @@ async fn admin_resource_meta_profile_delete(
         return Redirect::to("/admin/login").into_response();
     }
     match state.resources.delete_meta_profile(id).await {
-        Ok(_) => Redirect::to("/admin/meta").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/meta"),
         Err(err) => render_meta_default(&state, &cookies, None, Some(err.to_string())).await,
     }
 }
@@ -2154,7 +2158,7 @@ async fn admin_cloak_save(
         return Redirect::to("/admin/login").into_response();
     }
     match state.cloak.save_route_config(form.into()).await {
-        Ok(_) => Redirect::to("/admin/cloak").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/cloak"),
         Err(err) => render_cloak(&state, &cookies, Some(err.to_string())).await,
     }
 }
@@ -2342,7 +2346,7 @@ async fn admin_meta_save(
         }
     };
     match state.meta.save_route_config(input).await {
-        Ok(_) => Redirect::to("/admin/meta").into_response(),
+        Ok(_) => admin_config_redirect(&state, "/admin/meta"),
         Err(err) => render_meta_default(&state, &cookies, None, Some(err.to_string())).await,
     }
 }
@@ -2775,6 +2779,35 @@ fn json_field(value: &serde_json::Value, key: &str) -> String {
         .to_string()
 }
 
+fn found_redirect(location: &str) -> Response {
+    (
+        StatusCode::FOUND,
+        [(header::LOCATION, location.to_string())],
+    )
+        .into_response()
+}
+
+fn admin_config_redirect(state: &AppState, location: &str) -> Response {
+    state.clear_public_config_cache();
+    Redirect::to(location).into_response()
+}
+
+fn is_base_domain(host: &str, base_domain: &str) -> bool {
+    let host = normalize_host(host);
+    let base_domain = normalize_host(base_domain);
+    !host.is_empty() && host == base_domain
+}
+
+fn normalize_host(host: &str) -> String {
+    host.trim()
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_end_matches('.')
+        .to_ascii_lowercase()
+}
+
 async fn public_entry(
     State(state): State<AppState>,
     Query(query): Query<PublicQuery>,
@@ -2789,12 +2822,15 @@ async fn public_entry(
         .next()
         .unwrap_or("");
 
-    match state.routes.find_public_by_host(host).await {
+    if is_base_domain(host, &state.settings.base_domain) {
+        return found_redirect("/admin");
+    }
+
+    match state.find_public_route_cached(host).await {
         Ok(Some(route)) if route.match_kind == "entry" => {
             let promo = query.c.clone().unwrap_or_default();
             let promo_hit = state
-                .promos
-                .find_enabled(route.id, &promo)
+                .find_enabled_promo_cached(route.id, &promo)
                 .await
                 .ok()
                 .flatten();
@@ -2969,7 +3005,7 @@ async fn public_entry(
                     }
                     if route.target_type == "external" {
                         match append_public_query(&route.external_url, &query, visit_id) {
-                            Ok(url) => return Redirect::to(&url).into_response(),
+                            Ok(url) => return found_redirect(&url),
                             Err(err) => {
                                 tracing::error!(error = %err, route_id = %route.id, "failed to build external redirect");
                                 return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -2980,7 +3016,7 @@ async fn public_entry(
                         let mut url = format!("https://{exit_domain}/");
                         append_query_pairs(&mut url, &query, visit_id);
                         append_ht_pair(&mut url, &state, route.id, &exit_domain, &client_key);
-                        return Redirect::to(&url).into_response();
+                        return found_redirect(&url);
                     }
                     return render_with_status(
                         StatusCode::NOT_FOUND,
@@ -3068,7 +3104,7 @@ async fn public_entry(
             }
             if route.target_type == "external" {
                 match append_public_query(&route.external_url, &query, visit_id) {
-                    Ok(url) => Redirect::to(&url).into_response(),
+                    Ok(url) => found_redirect(&url),
                     Err(err) => {
                         tracing::error!(error = %err, route_id = %route.id, "failed to build external redirect");
                         StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -3080,7 +3116,7 @@ async fn public_entry(
                 if cloak_enabled {
                     append_ht_pair(&mut url, &state, route.id, &exit_domain, &client_key);
                 }
-                Redirect::to(&url).into_response()
+                found_redirect(&url)
             } else {
                 render_with_status(StatusCode::NOT_FOUND, NotConfiguredTemplate { host })
             }
@@ -3105,8 +3141,7 @@ async fn public_entry(
                 ) {
                     let promo = query.c.clone().unwrap_or_default();
                     let promo_hit = state
-                        .promos
-                        .find_enabled(route.id, &promo)
+                        .find_enabled_promo_cached(route.id, &promo)
                         .await
                         .ok()
                         .flatten();
@@ -3153,8 +3188,7 @@ async fn public_entry(
             }
             let promo = query.c.clone().unwrap_or_default();
             let promo_hit = state
-                .promos
-                .find_enabled(route.id, &promo)
+                .find_enabled_promo_cached(route.id, &promo)
                 .await
                 .ok()
                 .flatten();
@@ -3253,7 +3287,7 @@ async fn cloak_verify(
         .split(':')
         .next()
         .unwrap_or("");
-    let route = match state.routes.find_public_by_host(host).await {
+    let route = match state.find_public_route_cached(host).await {
         Ok(Some(route)) if route.id == route_id && route.match_kind == "entry" => route,
         _ => {
             return Json(CloakVerifyResponse {
@@ -3340,8 +3374,7 @@ async fn cloak_verify(
     if human {
         let promo = query.c.clone().unwrap_or_default();
         let promo_hit = state
-            .promos
-            .find_enabled(route.id, &promo)
+            .find_enabled_promo_cached(route.id, &promo)
             .await
             .ok()
             .flatten();
@@ -3436,8 +3469,7 @@ async fn cloak_verify(
     } else {
         let promo = query.c.clone().unwrap_or_default();
         let promo_hit = state
-            .promos
-            .find_enabled(route.id, &promo)
+            .find_enabled_promo_cached(route.id, &promo)
             .await
             .ok()
             .flatten();
@@ -4381,7 +4413,7 @@ async fn tls_check(
 
     let allowed = !host.is_empty()
         && (host == state.settings.base_domain
-            || state.routes.domain_allowed(host).await.unwrap_or(false));
+            || state.domain_allowed_cached(host).await.unwrap_or(false));
     if allowed {
         StatusCode::OK
     } else {

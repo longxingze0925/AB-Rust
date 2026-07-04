@@ -2,9 +2,11 @@ use ab_db::DbPool;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     net::{IpAddr, Ipv6Addr},
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 use tokio::{net::UdpSocket, time::timeout};
 use uuid::Uuid;
@@ -96,7 +98,17 @@ pub struct CloakService {
     pool: DbPool,
     data_dir: Arc<PathBuf>,
     asn_cache: Arc<Mutex<AsnCache>>,
+    runtime_cache: Arc<Mutex<HashMap<Uuid, RuntimeConfigCacheEntry>>>,
 }
+
+#[derive(Clone)]
+struct RuntimeConfigCacheEntry {
+    value: Option<CloakRuntimeConfig>,
+    expires_at: Instant,
+}
+
+const RUNTIME_CONFIG_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const RUNTIME_CONFIG_CACHE_MAX_ITEMS: usize = 10_000;
 
 impl CloakService {
     pub fn new(pool: DbPool, data_dir: impl Into<PathBuf>) -> Self {
@@ -104,7 +116,15 @@ impl CloakService {
             pool,
             data_dir: Arc::new(data_dir.into()),
             asn_cache: Arc::new(Mutex::new(AsnCache::default())),
+            runtime_cache: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    pub fn clear_runtime_cache(&self) {
+        self.runtime_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
     }
 
     pub async fn list_route_configs(&self) -> anyhow::Result<Vec<CloakRouteConfig>> {
@@ -153,6 +173,7 @@ impl CloakService {
         .bind(input.decoy_apk_url.trim())
         .execute(&self.pool)
         .await?;
+        self.clear_runtime_cache();
         Ok(())
     }
 
@@ -457,6 +478,10 @@ impl CloakService {
         &self,
         route_id: Uuid,
     ) -> anyhow::Result<Option<CloakRuntimeConfig>> {
+        if let Some(config) = self.runtime_config_cache_get(route_id) {
+            return Ok(config);
+        }
+
         let row = sqlx::query_as::<_, CloakRuntimeConfig>(
             r#"
             SELECT
@@ -486,7 +511,43 @@ impl CloakService {
         .bind(route_id)
         .fetch_optional(&self.pool)
         .await?;
+        self.runtime_config_cache_put(route_id, row.clone());
         Ok(row)
+    }
+
+    fn runtime_config_cache_get(&self, route_id: Uuid) -> Option<Option<CloakRuntimeConfig>> {
+        let now = Instant::now();
+        let mut cache = self
+            .runtime_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match cache.get(&route_id) {
+            Some(entry) if entry.expires_at > now => Some(entry.value.clone()),
+            Some(_) => {
+                cache.remove(&route_id);
+                None
+            }
+            None => None,
+        }
+    }
+
+    fn runtime_config_cache_put(&self, route_id: Uuid, value: Option<CloakRuntimeConfig>) {
+        let now = Instant::now();
+        let mut cache = self
+            .runtime_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        cache.retain(|_, entry| entry.expires_at > now);
+        if cache.len() >= RUNTIME_CONFIG_CACHE_MAX_ITEMS {
+            cache.clear();
+        }
+        cache.insert(
+            route_id,
+            RuntimeConfigCacheEntry {
+                value,
+                expires_at: now + RUNTIME_CONFIG_CACHE_TTL,
+            },
+        );
     }
 
     pub async fn decoy_for_route(

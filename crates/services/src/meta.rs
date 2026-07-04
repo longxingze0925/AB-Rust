@@ -6,6 +6,11 @@ use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    time::{Duration as StdDuration, Instant},
+};
 use uuid::Uuid;
 
 const ENCRYPTED_TOKEN_PREFIX: &str = "enc:v1:";
@@ -158,7 +163,17 @@ pub struct MetaService {
     pool: DbPool,
     client: reqwest::Client,
     token_crypto: Option<TokenCrypto>,
+    config_cache: Arc<Mutex<HashMap<Uuid, MetaConfigCacheEntry>>>,
 }
+
+#[derive(Clone)]
+struct MetaConfigCacheEntry {
+    value: Option<MetaConfig>,
+    expires_at: Instant,
+}
+
+const META_CONFIG_CACHE_TTL: StdDuration = StdDuration::from_secs(10 * 60);
+const META_CONFIG_CACHE_MAX_ITEMS: usize = 10_000;
 
 pub(crate) fn encrypt_meta_token(token: &str, token_key: &str) -> anyhow::Result<String> {
     let token = token.trim();
@@ -178,7 +193,15 @@ impl MetaService {
             pool,
             client: reqwest::Client::new(),
             token_crypto,
+            config_cache: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    pub fn clear_runtime_cache(&self) {
+        self.config_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
     }
 
     pub async fn list_route_configs(&self) -> anyhow::Result<Vec<MetaRouteConfig>> {
@@ -253,6 +276,7 @@ impl MetaService {
         .bind(input.lead_enabled)
         .execute(&self.pool)
         .await?;
+        self.clear_runtime_cache();
         Ok(())
     }
 
@@ -759,6 +783,10 @@ impl MetaService {
     }
 
     async fn config(&self, route_id: Uuid) -> anyhow::Result<Option<MetaConfig>> {
+        if let Some(config) = self.config_cache_get(route_id) {
+            return Ok(config);
+        }
+
         let row = sqlx::query_as::<_, MetaConfig>(
             r#"
             SELECT
@@ -788,7 +816,43 @@ impl MetaService {
             }
             None => None,
         };
+        self.config_cache_put(route_id, row.clone());
         Ok(row)
+    }
+
+    fn config_cache_get(&self, route_id: Uuid) -> Option<Option<MetaConfig>> {
+        let now = Instant::now();
+        let mut cache = self
+            .config_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match cache.get(&route_id) {
+            Some(entry) if entry.expires_at > now => Some(entry.value.clone()),
+            Some(_) => {
+                cache.remove(&route_id);
+                None
+            }
+            None => None,
+        }
+    }
+
+    fn config_cache_put(&self, route_id: Uuid, value: Option<MetaConfig>) {
+        let now = Instant::now();
+        let mut cache = self
+            .config_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        cache.retain(|_, entry| entry.expires_at > now);
+        if cache.len() >= META_CONFIG_CACHE_MAX_ITEMS {
+            cache.clear();
+        }
+        cache.insert(
+            route_id,
+            MetaConfigCacheEntry {
+                value,
+                expires_at: now + META_CONFIG_CACHE_TTL,
+            },
+        );
     }
 
     fn encrypt_token(&self, token: &str) -> anyhow::Result<String> {
