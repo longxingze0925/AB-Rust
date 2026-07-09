@@ -115,8 +115,56 @@
           pendingForm = null;
         });
 
+        const landingPreviewDialog = document.getElementById("landing-preview");
+        const landingPreviewFrame = document.getElementById("landing-preview-frame");
+        const landingPreviewTitle = document.getElementById("landing-preview-title");
+        const landingPreviewOpen = document.getElementById("landing-preview-open");
+        const landingPreviewStage = document.querySelector("[data-preview-stage]");
+
+        const setPreviewDevice = (device) => {
+          if (landingPreviewStage instanceof HTMLElement) {
+            landingPreviewStage.dataset.previewStage = device;
+          }
+          for (const button of document.querySelectorAll("[data-preview-device]")) {
+            const active = button instanceof HTMLElement && button.dataset.previewDevice === device;
+            button.classList.toggle("active", active);
+          }
+        };
+
+        landingPreviewDialog?.addEventListener("close", () => {
+          if (landingPreviewFrame instanceof HTMLIFrameElement) {
+            landingPreviewFrame.src = "about:blank";
+          }
+        });
+
         document.addEventListener("click", (event) => {
           const button = event.target;
+          const previewButton = button instanceof HTMLElement ? button.closest("[data-preview-open]") : null;
+          if (previewButton instanceof HTMLElement) {
+            const url = previewButton.dataset.previewUrl || "";
+            if (!url) return;
+            if (landingPreviewTitle) {
+              landingPreviewTitle.textContent = `预览落地页：${previewButton.dataset.previewTitle || ""}`;
+            }
+            if (landingPreviewOpen instanceof HTMLAnchorElement) {
+              landingPreviewOpen.href = url;
+            }
+            if (landingPreviewFrame instanceof HTMLIFrameElement) {
+              landingPreviewFrame.src = url;
+            }
+            setPreviewDevice("desktop");
+            if (landingPreviewDialog instanceof HTMLDialogElement) {
+              landingPreviewDialog.showModal();
+            } else {
+              window.open(url, "_blank", "noopener");
+            }
+            return;
+          }
+          const previewDeviceButton = button instanceof HTMLElement ? button.closest("[data-preview-device]") : null;
+          if (previewDeviceButton instanceof HTMLElement) {
+            setPreviewDevice(previewDeviceButton.dataset.previewDevice || "desktop");
+            return;
+          }
           const openButton = button instanceof HTMLElement ? button.closest("[data-modal-open]") : null;
           if (openButton instanceof HTMLElement) {
             const modal = document.getElementById(openButton.dataset.modalOpen || "");

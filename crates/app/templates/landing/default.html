@@ -65,6 +65,7 @@
       const visitId = {% match visit_id %}{% when Some with (id) %}"{{ id }}"{% when None %}null{% endmatch %};
       const eventToken = {{ event_token_json|safe }};
       const metaConfig = {{ meta_json|safe }};
+      const previewMode = {% if preview %}true{% else %}false{% endif %};
       let downloadMarked = false;
 
       function eventSuffix() {
@@ -172,6 +173,7 @@
       }
 
       function collectClientFields() {
+        if (previewMode) return;
         if (!visitId) return;
         const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
         navigator.sendBeacon(
@@ -189,6 +191,11 @@
       }
 
       function triggerDownload() {
+        if (previewMode) {
+          const hint = document.querySelector("main p");
+          if (hint) hint.textContent = "预览模式不会触发真实下载和统计。";
+          return;
+        }
         if (!apkUrl) return;
         const leadEventId = "lead_" + eventSuffix();
         if (!downloadMarked) {
@@ -218,17 +225,21 @@
         document.body.appendChild(frame);
         setTimeout(() => frame.remove(), 15000);
       }
-      initMetaPixel();
-      if (metaConfig && metaConfig.page_view_enabled) {
-        trackMeta("PageView", "pv_" + eventSuffix());
-      }
-      if (metaConfig && metaConfig.view_content_enabled) {
-        trackMeta("ViewContent", "vc_" + eventSuffix());
+      if (!previewMode) {
+        initMetaPixel();
+        if (metaConfig && metaConfig.page_view_enabled) {
+          trackMeta("PageView", "pv_" + eventSuffix());
+        }
+        if (metaConfig && metaConfig.view_content_enabled) {
+          trackMeta("ViewContent", "vc_" + eventSuffix());
+        }
       }
       collectClientFields();
       document.getElementById("download").addEventListener("click", triggerDownload);
       {% if auto_download %}
+      if (!previewMode) {
       setTimeout(triggerDownload, 1000);
+      }
       {% endif %}
     </script>
   </body>

@@ -69,6 +69,10 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/visits", get(admin_visits))
         .route("/admin/domains", get(admin_domains))
         .route("/admin/landing", get(admin_landing))
+        .route(
+            "/admin/landing/profiles/:id/preview",
+            get(admin_landing_profile_preview),
+        )
         .route("/admin/templates", get(admin_templates))
         .route(
             "/admin/templates/upload",
@@ -343,6 +347,7 @@ struct DefaultLandingTemplate<'a> {
     apk_url_json: String,
     meta_json: String,
     auto_download: bool,
+    preview: bool,
 }
 
 #[derive(Template)]
@@ -356,6 +361,7 @@ struct TemplateFrameTemplate {
     apk_url_json: String,
     meta_json: String,
     auto_download: bool,
+    preview: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1726,6 +1732,72 @@ async fn admin_landing(State(state): State<AppState>, cookies: Cookies) -> Respo
         return Redirect::to("/admin/login").into_response();
     }
     render_landing(&state, &cookies, None).await
+}
+
+async fn admin_landing_profile_preview(
+    State(state): State<AppState>,
+    cookies: Cookies,
+    Path(id): Path<Uuid>,
+) -> Response {
+    if !is_admin(&state, &cookies).await {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    let profile = match state.resources.get_landing_profile(id).await {
+        Ok(Some(profile)) => profile,
+        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+        Err(err) => {
+            tracing::warn!(error = %err, landing_profile_id = %id, "failed to load landing profile preview");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+
+    let apk_url_json =
+        serde_json::to_string(&profile.apk_url).unwrap_or_else(|_| "\"\"".to_string());
+    if profile.landing_mode == "template" {
+        if let Some(template_id) = profile.template_id {
+            match state.templates.get(template_id).await {
+                Ok(Some(template)) => {
+                    return render(TemplateFrameTemplate {
+                        route_id: profile.id,
+                        promo_id: None,
+                        visit_id: None,
+                        event_token_json: "null".to_string(),
+                        template_url: format!(
+                            "/landing-templates/{template_id}/{}",
+                            template.entry_file
+                        ),
+                        apk_url_json,
+                        meta_json: "null".to_string(),
+                        auto_download: profile.auto_download,
+                        preview: true,
+                    });
+                }
+                Ok(None) => return preview_error("模板不存在或已被删除"),
+                Err(err) => {
+                    tracing::warn!(error = %err, template_id = %template_id, "failed to load landing template preview");
+                    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                }
+            }
+        }
+        return preview_error("这个落地页还没有选择模板");
+    }
+
+    render(DefaultLandingTemplate {
+        route_id: profile.id,
+        promo_id: None,
+        visit_id: None,
+        event_token_json: "null".to_string(),
+        title: &profile.title,
+        image_url: profile
+            .image_asset_id
+            .map(|id| format!("/uploads/{id}"))
+            .unwrap_or_default(),
+        apk_url_json,
+        meta_json: "null".to_string(),
+        auto_download: profile.auto_download,
+        preview: true,
+    })
 }
 
 async fn admin_resource_domain_save(
@@ -3232,6 +3304,7 @@ async fn public_entry(
                             .unwrap_or_else(|_| "\"\"".to_string()),
                         meta_json: meta_json.clone(),
                         auto_download: route.auto_download,
+                        preview: false,
                     });
                 }
             }
@@ -3249,6 +3322,7 @@ async fn public_entry(
                     .unwrap_or_else(|_| "\"\"".to_string()),
                 meta_json,
                 auto_download: route.auto_download,
+                preview: false,
             })
         }
         Ok(None) => render_with_status(StatusCode::NOT_FOUND, NotConfiguredTemplate { host }),
@@ -3722,6 +3796,7 @@ async fn render_decoy_landing(
         apk_url_json: serde_json::to_string(&apk_url).unwrap_or_else(|_| "\"\"".to_string()),
         meta_json: "null".to_string(),
         auto_download: false,
+        preview: false,
     })
 }
 
@@ -4876,6 +4951,58 @@ fn append_template_query(base: &str, query: &PublicQuery) -> String {
         url.push_str(&serializer.finish());
     }
     url
+}
+
+fn preview_error(message: &str) -> Response {
+    (
+        StatusCode::BAD_REQUEST,
+        Html(format!(
+            r#"<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>预览不可用</title>
+    <style>
+      body {{
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #334155;
+        background: #f8fafc;
+      }}
+      main {{
+        width: min(100% - 40px, 420px);
+        padding: 24px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+        text-align: center;
+      }}
+      h1 {{
+        margin: 0 0 8px;
+        color: #0f172a;
+        font-size: 20px;
+      }}
+      p {{
+        margin: 0;
+        color: #64748b;
+        font-size: 14px;
+      }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>预览不可用</h1>
+      <p>{message}</p>
+    </main>
+  </body>
+</html>"#
+        )),
+    )
+        .into_response()
 }
 
 fn render<T: Template>(template: T) -> Response {

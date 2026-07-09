@@ -432,6 +432,35 @@ impl ResourcesService {
         Ok(rows)
     }
 
+    pub async fn get_landing_profile(&self, id: Uuid) -> anyhow::Result<Option<LandingProfile>> {
+        let row = sqlx::query_as::<_, LandingProfile>(
+            r#"
+            SELECT
+              p.id,
+              p.name,
+              p.landing_mode,
+              p.template_id,
+              t.name AS template_name,
+              p.image_asset_id,
+              a.original_name AS image_name,
+              p.title,
+              p.apk_url,
+              p.auto_download,
+              p.enabled,
+              p.updated_at
+            FROM landing_profiles p
+            LEFT JOIN landing_templates t ON t.id = p.template_id
+            LEFT JOIN assets a ON a.id = p.image_asset_id
+            WHERE p.id = $1
+            LIMIT 1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
     pub async fn list_enabled_landing_profiles(&self) -> anyhow::Result<Vec<LandingProfile>> {
         self.list_selectable_landing_profiles(None).await
     }

@@ -58,6 +58,7 @@
         <td data-label="状态">{% if item.enabled %}<span class="badge success">启用</span>{% else %}<span class="badge muted">停用</span>{% endif %}</td>
         <td data-label="操作">
           <div class="actions">
+            <button class="btn small" type="button" data-preview-open data-preview-title="{{ item.name }}" data-preview-url="/admin/landing/profiles/{{ item.id }}/preview">预览</button>
             <button class="btn small" type="button" data-modal-open="landing-{{ item.id }}">编辑</button>
             <form method="post" action="/admin/landing/profiles/{{ item.id }}/toggle">
               <button class="btn small" type="submit">{% if item.enabled %}停用{% else %}启用{% endif %}</button>
@@ -77,6 +78,28 @@
     </tbody>
   </table>
 </section>
+
+<dialog class="modal-dialog preview-dialog" id="landing-preview">
+  <div class="modal-card preview-card">
+    <div class="modal-header">
+      <div>
+        <h2 id="landing-preview-title">预览落地页</h2>
+        <p>预览模式不会记录访问、下载或 Meta 事件。</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭">×</button>
+    </div>
+    <div class="preview-toolbar">
+      <div class="segmented" aria-label="预览设备">
+        <button type="button" data-preview-device="desktop" class="active">电脑</button>
+        <button type="button" data-preview-device="mobile">手机</button>
+      </div>
+      <a class="btn small" id="landing-preview-open" href="#" target="_blank" rel="noopener">新窗口打开</a>
+    </div>
+    <div class="preview-stage" data-preview-stage="desktop">
+      <iframe id="landing-preview-frame" class="preview-frame" title="落地页预览" src="about:blank"></iframe>
+    </div>
+  </div>
+</dialog>
 
 <dialog class="modal-dialog wide" id="landing-new">
   <form class="modal-card" method="post" action="/admin/landing/profiles/save" enctype="multipart/form-data">
