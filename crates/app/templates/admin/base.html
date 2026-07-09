@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}APK 分发后台{% endblock %}</title>
-    <link rel="stylesheet" href="/static/admin.css">
+    <link rel="stylesheet" href="/static/admin.css?v=20260709-preview2">
   </head>
   <body>
     <div class="shell">
@@ -120,14 +120,26 @@
         const landingPreviewTitle = document.getElementById("landing-preview-title");
         const landingPreviewOpen = document.getElementById("landing-preview-open");
         const landingPreviewStage = document.querySelector("[data-preview-stage]");
+        let landingPreviewShellUrl = "";
+        let landingPreviewDevice = "mobile";
+
+        const previewUrlForDevice = (url, device) => {
+          if (!url) return "#";
+          const separator = url.includes("?") ? "&" : "?";
+          return `${url}${separator}device=${encodeURIComponent(device)}`;
+        };
 
         const setPreviewDevice = (device) => {
+          landingPreviewDevice = device === "desktop" ? "desktop" : "mobile";
           if (landingPreviewStage instanceof HTMLElement) {
-            landingPreviewStage.dataset.previewStage = device;
+            landingPreviewStage.dataset.previewStage = landingPreviewDevice;
           }
           for (const button of document.querySelectorAll("[data-preview-device]")) {
-            const active = button instanceof HTMLElement && button.dataset.previewDevice === device;
+            const active = button instanceof HTMLElement && button.dataset.previewDevice === landingPreviewDevice;
             button.classList.toggle("active", active);
+          }
+          if (landingPreviewOpen instanceof HTMLAnchorElement) {
+            landingPreviewOpen.href = previewUrlForDevice(landingPreviewShellUrl, landingPreviewDevice);
           }
         };
 
@@ -143,20 +155,18 @@
           if (previewButton instanceof HTMLElement) {
             const url = previewButton.dataset.previewUrl || "";
             if (!url) return;
+            landingPreviewShellUrl = previewButton.dataset.previewShellUrl || url;
             if (landingPreviewTitle) {
               landingPreviewTitle.textContent = `预览落地页：${previewButton.dataset.previewTitle || ""}`;
-            }
-            if (landingPreviewOpen instanceof HTMLAnchorElement) {
-              landingPreviewOpen.href = url;
             }
             if (landingPreviewFrame instanceof HTMLIFrameElement) {
               landingPreviewFrame.src = url;
             }
-            setPreviewDevice("desktop");
+            setPreviewDevice("mobile");
             if (landingPreviewDialog instanceof HTMLDialogElement) {
               landingPreviewDialog.showModal();
             } else {
-              window.open(url, "_blank", "noopener");
+              window.open(previewUrlForDevice(landingPreviewShellUrl, landingPreviewDevice), "_blank", "noopener");
             }
             return;
           }

@@ -271,6 +271,14 @@ struct LandingTemplatePage<'a> {
 }
 
 #[derive(Template)]
+#[template(path = "admin/landing_preview.html")]
+struct LandingPreviewTemplate {
+    name: String,
+    device: String,
+    frame_url: String,
+}
+
+#[derive(Template)]
 #[template(path = "admin/cloak.html")]
 struct CloakTemplate<'a> {
     active: &'a str,
@@ -382,6 +390,12 @@ struct ChangePasswordForm {
 struct CsrfForm {
     csrf_token: String,
     return_to: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LandingPreviewQuery {
+    device: Option<String>,
+    frame: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1738,6 +1752,7 @@ async fn admin_landing_profile_preview(
     State(state): State<AppState>,
     cookies: Cookies,
     Path(id): Path<Uuid>,
+    Query(query): Query<LandingPreviewQuery>,
 ) -> Response {
     if !is_admin(&state, &cookies).await {
         return Redirect::to("/admin/login").into_response();
@@ -1751,6 +1766,19 @@ async fn admin_landing_profile_preview(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
+
+    if query.frame.as_deref() != Some("1") {
+        let device = if query.device.as_deref() == Some("desktop") {
+            "desktop"
+        } else {
+            "mobile"
+        };
+        return render(LandingPreviewTemplate {
+            name: profile.name,
+            device: device.to_string(),
+            frame_url: format!("/admin/landing/profiles/{id}/preview?frame=1"),
+        });
+    }
 
     let apk_url_json =
         serde_json::to_string(&profile.apk_url).unwrap_or_else(|_| "\"\"".to_string());
